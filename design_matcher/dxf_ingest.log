@@ -1,0 +1,20 @@
+2026-10-14 00:41:57,468 [INFO] dxf_ingest: Extracted 1 designs (0 labels found) from DXF in 0.00 s (skipped 0 entities).
+2026-10-14 00:41:59,803 [INFO] dxf_ingest: Extracted 1 designs (0 labels found) from DXF in 0.00 s (skipped 0 entities).
+2026-10-14 00:41:59,814 [INFO] dxf_ingest: Extracted 2 designs (2 labels found) from DXF in 0.00 s (skipped 0 entities).
+2026-10-14 00:41:59,824 [INFO] dxf_ingest: Extracted 1 designs (0 labels found) from DXF in 0.00 s (skipped 0 entities).
+2026-10-14 00:41:59,831 [INFO] dxf_ingest: Extracted 1 designs (0 labels found) from DXF in 0.00 s (skipped 0 entities).
+2026-10-14 00:41:59,841 [INFO] dxf_ingest: Extracted 1 designs (0 labels found) from DXF in 0.00 s (skipped 0 entities).
+2026-10-14 00:42:00,226 [INFO] dxf_ingest: Extracted 2 designs (2 labels found) from DXF in 0.00 s (skipped 0 entities).
+2026-10-14 00:42:01,095 [INFO] dxf_ingest: Extracted 2 designs (2 labels found) from DXF in 0.00 s (skipped 0 entities).
+2026-10-14 00:42:28,421 [INFO] dxf_ingest: Extracted 2 designs (0 labels found) from DXF in 0.00 s (skipped 0 entities).
+2026-10-14 00:42:28,646 [INFO] dxf_ingest: Extracted 2 designs (0 labels found) from DXF in 0.00 s (skipped 0 entities).
+2026-10-14 00:42:28,890 [INFO] dxf_ingest: Extracted 2 designs (0 labels found) from DXF in 0.00 s (skipped 0 entities).
+2026-10-14 00:42:28,916 [INFO] dxf_ingest: Extracted 2 designs (0 labels found) from DXF in 0.00 s (skipped 0 entities).
+2026-10-14 00:42:29,140 [WARNING] dxf_ingest: ezdxf.readfile failed on corrupt.dxf (File '/private/var/folders/2j/jps01wd95lj0wcwhhxx531b00000gn/T/pytest-of-suhel/pytest-178/test_viewer_widget_corrupt_fil0/corrupt.dxf' is not a DXF file.). Attempting ezdxf.recover...
+2026-10-14 00:42:29,249 [INFO] dxf_ingest: Extracted 2 designs (0 labels found) from DXF in 0.00 s (skipped 0 entities).
+2026-10-14 00:42:29,270 [INFO] dxf_ingest: Extracted 2 designs (0 labels found) from DXF in 0.00 s (skipped 0 entities).
+2026-10-14 00:42:29,478 [INFO] dxf_ingest: Extracted 2 designs (0 labels found) from DXF in 0.00 s (skipped 0 entities).
+2026-10-14 00:42:29,511 [INFO] dxf_ingest: Extracted 2 designs (0 labels found) from DXF in 0.00 s (skipped 0 entities).
+2026-10-14 00:42:29,524 [INFO] dxf_ingest: Extracted 2 designs (0 labels found) from DXF in 0.00 s (skipped 0 entities).
+2026-10-14 00:42:29,603 [INFO] dxf_ingest: Extracted 2 designs (0 labels found) from DXF in 0.00 s (skipped 0 entities).
+2026-10-14 00:42:29,875 [INFO] dxf_ingest: Extracted 2 designs (0 labels found) from DXF in 0.00 s (skipped 0 entities).

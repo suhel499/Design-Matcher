@@ -1,0 +1,8 @@
+[tool.pyright]
+extraPaths = ["design_matcher"]
+venvPath = "."
+venv = ".venv"
+
+[tool.pytest.ini_options]
+pythonpath = ["design_matcher"]
+testpaths = ["design_matcher/tests"]

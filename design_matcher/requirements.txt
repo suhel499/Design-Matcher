@@ -1,0 +1,37 @@
+# Laser Cut Design Matcher - Dependencies
+# Python >= 3.11 (Windows / macOS / Linux)
+
+# GUI
+PySide6>=6.6.0,<=6.12.0
+
+# PDF Rendering (Free for commercial use - Apache-2.0 / BSD-3, no AGPL)
+pypdfium2>=4.30.0,<=5.14.0
+
+# CAD DXF Reading & Computational Geometry (MIT & BSD-3, Commercial Safe)
+ezdxf>=1.4.0
+shapely>=2.0.0
+matplotlib>=3.7.0
+
+# Image Processing & Geometry
+opencv-python-headless>=4.8.0
+Pillow>=10.0.0
+numpy>=1.24.0
+scipy>=1.11.0
+
+# Vector Similarity Search
+faiss-cpu>=1.7.4
+
+# Deep Learning / Embeddings (CPU)
+torch>=2.1.0
+torchvision>=0.16.0
+
+# Optional ONNX Runtime CPU (if ONNX encoder selected)
+# onnxruntime>=1.16.0
+
+# Optional OCR
+pytesseract>=0.3.10
+
+# Testing and Tooling
+pytest>=7.4.0
+pytest-qt>=4.4.0
+tqdm>=4.66.0
