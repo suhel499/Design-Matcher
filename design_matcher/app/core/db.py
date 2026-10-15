@@ -86,6 +86,22 @@ class CatalogDatabase:
                 """
             )
 
+            # Search history table
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS search_history (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    timestamp TEXT NOT NULL,
+                    search_mode TEXT NOT NULL,
+                    query_text TEXT,
+                    thumbnail_b64 TEXT,
+                    results_count INTEGER DEFAULT 0,
+                    top_match_code TEXT,
+                    top_match_score REAL DEFAULT 0.0
+                );
+                """
+            )
+
             # Migration check for DXF support columns on tiles table
             cursor.execute("PRAGMA table_info(tiles);")
             existing_cols = {row["name"] for row in cursor.fetchall()}
@@ -393,3 +409,47 @@ class CatalogDatabase:
 
             matches.sort(key=lambda item: item[0], reverse=True)
             return [m[1] for m in matches[:limit]]
+
+    def add_search_history(
+        self,
+        search_mode: str,
+        query_text: str = "",
+        thumbnail_b64: Optional[str] = None,
+        results_count: int = 0,
+        top_match_code: Optional[str] = None,
+        top_match_score: float = 0.0,
+    ) -> int:
+        """Records a completed search into search history."""
+        from datetime import datetime, timezone
+        ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                INSERT INTO search_history (timestamp, search_mode, query_text, thumbnail_b64, results_count, top_match_code, top_match_score)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (ts, search_mode, query_text, thumbnail_b64, results_count, top_match_code, top_match_score),
+            )
+            conn.commit()
+            return int(cursor.lastrowid or 0)
+
+    def get_search_history(self, limit: int = 100) -> list[dict[str, Any]]:
+        """Retrieves past searches ordered by newest first."""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM search_history ORDER BY id DESC LIMIT ?", (limit,))
+            return [dict(row) for row in cursor.fetchall()]
+
+    def delete_search_history(self, entry_id: int) -> None:
+        """Deletes a single search history item by ID."""
+        with self._get_connection() as conn:
+            conn.execute("DELETE FROM search_history WHERE id = ?", (entry_id,))
+            conn.commit()
+
+    def clear_all_search_history(self) -> None:
+        """Purges all records from search history."""
+        with self._get_connection() as conn:
+            conn.execute("DELETE FROM search_history")
+            conn.commit()
+

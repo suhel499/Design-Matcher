@@ -15,7 +15,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import cv2
 import numpy as np
 from PySide6.QtCore import QEvent, QObject, QSize, Qt, QTimer
-from PySide6.QtGui import QColor, QFont, QIcon, QImage, QMouseEvent, QPixmap
+from PySide6.QtGui import QAction, QColor, QFont, QIcon, QImage, QMouseEvent, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
     QButtonGroup,
@@ -26,6 +26,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QMainWindow,
+    QMenu,
     QMessageBox,
     QProgressBar,
     QProgressDialog,
@@ -40,6 +41,18 @@ from PySide6.QtWidgets import (
 )
 
 from dxf_viewer import DxfPreviewPage, DxfViewerWidget
+from app.gui.pages import (
+    AboutPage,
+    BackupPage,
+    CatalogManagerPage,
+    EulaPage,
+    HelpPage,
+    HistoryPage,
+    LicensePage,
+    SettingsPage,
+    SupportPage,
+    UpdatesPage,
+)
 from app.core.image_crop import warp_four_points
 from app.core.index import CatalogIndex, get_default_data_dir
 from app.core.preprocess import (
@@ -310,6 +323,7 @@ class MainWindow(QMainWindow):
         self.update_catalog_stats()
         self._update_license_indicator()
         self._check_license_on_startup()
+        self._check_eula_on_startup()
 
     def _setup_ui(self) -> None:
         self.setStyleSheet(STYLE_SHEET)
@@ -333,7 +347,10 @@ class MainWindow(QMainWindow):
         title_row.addWidget(title_label)
         title_row.addSpacing(16)
 
-        # Top Navigation Tabs: 1. Matcher  2. DXF Preview
+        # Setup Native Desktop Menu Bar
+        self._setup_menu_bar()
+
+        # Top Navigation Tabs: 1. Matcher  2. DXF Preview  3. Catalogs  4. History
         self.nav_tab_matcher = QPushButton("🔍 1. Matcher", header)
         self.nav_tab_matcher.setObjectName("mainNavTab")
         self.nav_tab_matcher.setCheckable(True)
@@ -347,11 +364,28 @@ class MainWindow(QMainWindow):
         self.nav_tab_dxf_preview.setCursor(Qt.CursorShape.PointingHandCursor)
         self.nav_tab_dxf_preview.installEventFilter(self)
 
+        self.nav_tab_catalogs = QPushButton("📚 3. Catalogs", header)
+        self.nav_tab_catalogs.setObjectName("mainNavTab")
+        self.nav_tab_catalogs.setCheckable(True)
+        self.nav_tab_catalogs.setChecked(False)
+        self.nav_tab_catalogs.setCursor(Qt.CursorShape.PointingHandCursor)
+
+        self.nav_tab_history = QPushButton("🕒 4. History", header)
+        self.nav_tab_history.setObjectName("mainNavTab")
+        self.nav_tab_history.setCheckable(True)
+        self.nav_tab_history.setChecked(False)
+        self.nav_tab_history.setCursor(Qt.CursorShape.PointingHandCursor)
+
         self.nav_button_group = QButtonGroup(self)
         self.nav_button_group.addButton(self.nav_tab_matcher, 0)
         self.nav_button_group.addButton(self.nav_tab_dxf_preview, 1)
-        self.nav_tab_matcher.clicked.connect(lambda *_: self._on_main_tab_changed(0))
+        self.nav_button_group.addButton(self.nav_tab_catalogs, 5)
+        self.nav_button_group.addButton(self.nav_tab_history, 6)
+
+        self.nav_tab_matcher.clicked.connect(lambda *_: self.open_page(0))
         self.nav_tab_dxf_preview.clicked.connect(self._on_dxf_preview_tab_clicked)
+        self.nav_tab_catalogs.clicked.connect(lambda *_: self.open_page(5))
+        self.nav_tab_history.clicked.connect(lambda *_: self.open_page(6))
 
         # Aliases for convenience
         self.tab_matcher_btn = self.nav_tab_matcher
@@ -359,6 +393,8 @@ class MainWindow(QMainWindow):
 
         title_row.addWidget(self.nav_tab_matcher)
         title_row.addWidget(self.nav_tab_dxf_preview)
+        title_row.addWidget(self.nav_tab_catalogs)
+        title_row.addWidget(self.nav_tab_history)
         title_row.addStretch()
         title_vbox.addLayout(title_row)
 
@@ -394,22 +430,7 @@ class MainWindow(QMainWindow):
         header_layout.addLayout(code_search_box)
 
         # Action buttons in header
-        dxf_index_btn = QPushButton("Index DXF Library", header)
-        dxf_index_btn.setObjectName("headerBtn")
-        dxf_index_btn.setStyleSheet(
-            "QPushButton { background: #5B21B6; color: white; border: 1px solid #7C3AED; "
-            "padding: 5px 12px; font-weight: 600; font-size: 12px; border-radius: 5px; } "
-            "QPushButton:hover { background: #4C1D95; }"
-        )
-        dxf_index_btn.clicked.connect(self._start_dxf_indexing_flow)
-        header_layout.addWidget(dxf_index_btn)
-
-        index_btn = QPushButton("Index Catalogs", header)
-        index_btn.setObjectName("headerBtn")
-        index_btn.clicked.connect(self._start_indexing_flow)
-        header_layout.addWidget(index_btn)
-
-        settings_btn = QPushButton("Settings", header)
+        settings_btn = QPushButton("⚙️ Settings", header)
         settings_btn.setObjectName("headerBtn")
         settings_btn.clicked.connect(self._open_settings)
         header_layout.addWidget(settings_btn)
@@ -423,6 +444,33 @@ class MainWindow(QMainWindow):
         )
         self.license_btn.clicked.connect(self._open_license_dialog)
         header_layout.addWidget(self.license_btn)
+
+        help_btn = QPushButton("❓ Help", header)
+        help_btn.setObjectName("headerBtn")
+        help_btn.clicked.connect(lambda: self.open_page(7))
+        header_layout.addWidget(help_btn)
+
+        more_btn = QPushButton("⋯ More", header)
+        more_btn.setObjectName("headerBtn")
+        more_menu = QMenu(more_btn)
+        more_menu.setStyleSheet(
+            "QMenu { background: #1E293B; color: #F8FAFC; border: 1px solid #334155; padding: 4px; } "
+            "QMenu::item { padding: 6px 20px; border-radius: 4px; } "
+            "QMenu::item:selected { background: #2563EB; color: white; }"
+        )
+        act_upd = more_menu.addAction("🔄 Software Updates")
+        act_upd.triggered.connect(lambda: self.open_page(8))
+        act_bak = more_menu.addAction("💾 Backup & Data Privacy")
+        act_bak.triggered.connect(lambda: self.open_page(9))
+        act_sup = more_menu.addAction("💬 Contact Support & Diagnostics")
+        act_sup.triggered.connect(lambda: self.open_page(11))
+        more_menu.addSeparator()
+        act_eula = more_menu.addAction("📜 License Agreement & Privacy")
+        act_eula.triggered.connect(lambda: self.open_page(2))
+        act_abt = more_menu.addAction("ℹ️ About Design Matcher")
+        act_abt.triggered.connect(lambda: self.open_page(10))
+        more_btn.setMenu(more_menu)
+        header_layout.addWidget(more_btn)
 
         main_layout.addWidget(header)
 
@@ -733,6 +781,63 @@ class MainWindow(QMainWindow):
         # Tab 2: DXF Preview Page
         self.dxf_preview_page = DxfPreviewPage(parent=self.main_stack)
         self.main_stack.addWidget(self.dxf_preview_page)
+
+        # Page 2: EULA & Privacy Notice (First-run and legal review)
+        self.eula_page = EulaPage(parent=self.main_stack)
+        self.eula_page.accepted.connect(self._on_eula_accepted)
+        self.eula_page.back_requested.connect(lambda: self.open_page(0))
+        self.main_stack.addWidget(self.eula_page)
+
+        # Page 3: Activation & License Management
+        self.license_page = LicensePage(license_manager=self.license_manager, parent=self.main_stack)
+        self.license_page.back_requested.connect(lambda: self.open_page(0))
+        self.license_page.license_changed.connect(self._update_license_indicator)
+        self.main_stack.addWidget(self.license_page)
+
+        # Page 4: Application Settings
+        self.settings_page = SettingsPage(db=self.catalog_index.db, catalog_index=self.catalog_index, parent=self.main_stack)
+        self.settings_page.back_requested.connect(lambda: self.open_page(0))
+        self.settings_page.settings_saved.connect(self.update_catalog_stats)
+        self.main_stack.addWidget(self.settings_page)
+
+        # Page 5: Catalog & DXF Index Manager
+        self.catalog_mgr_page = CatalogManagerPage(catalog_index=self.catalog_index, dxf_db=self.dxf_db, parent=self.main_stack)
+        self.catalog_mgr_page.back_requested.connect(lambda: self.open_page(0))
+        self.catalog_mgr_page.reindex_dxf_requested.connect(self._start_dxf_indexing_flow)
+        self.catalog_mgr_page.reindex_pdf_requested.connect(self._start_indexing_flow)
+        self.main_stack.addWidget(self.catalog_mgr_page)
+
+        # Page 6: Search History
+        self.history_page = HistoryPage(db=self.catalog_index.db, parent=self.main_stack)
+        self.history_page.back_requested.connect(lambda: self.open_page(0))
+        self.history_page.rerun_search.connect(self._on_rerun_search)
+        self.main_stack.addWidget(self.history_page)
+
+        # Page 7: Help, Quick Start Guide & Diagnostics
+        self.help_page = HelpPage(parent=self.main_stack)
+        self.help_page.back_requested.connect(lambda: self.open_page(0))
+        self.main_stack.addWidget(self.help_page)
+
+        # Page 8: Software Updates
+        self.updates_page = UpdatesPage(parent=self.main_stack)
+        self.updates_page.back_requested.connect(lambda: self.open_page(0))
+        self.main_stack.addWidget(self.updates_page)
+
+        # Page 9: Backup, Restore & Data Privacy / Reset
+        self.backup_page = BackupPage(catalog_index=self.catalog_index, parent=self.main_stack)
+        self.backup_page.back_requested.connect(lambda: self.open_page(0))
+        self.backup_page.data_reset_performed.connect(self._on_data_reset)
+        self.main_stack.addWidget(self.backup_page)
+
+        # Page 10: About Design Matcher & 3rd-Party Licenses
+        self.about_page = AboutPage(parent=self.main_stack)
+        self.about_page.back_requested.connect(lambda: self.open_page(0))
+        self.main_stack.addWidget(self.about_page)
+
+        # Page 11: Contact Support & Zero-PII Log Exporter
+        self.support_page = SupportPage(parent=self.main_stack)
+        self.support_page.back_requested.connect(lambda: self.open_page(0))
+        self.main_stack.addWidget(self.support_page)
 
         main_layout.addWidget(self.main_stack, 1)
 
@@ -1423,27 +1528,62 @@ class MainWindow(QMainWindow):
             return
         self._on_main_tab_changed(1)
 
-    def _on_main_tab_changed(self, tab_id: int) -> None:
-        """Switches between '1. Matcher' and '2. DXF Preview' tabs."""
+    def open_page(self, tab_id: int) -> None:
+        """
+        Navigates to the specified view in main_stack:
+        0: Matcher
+        1: DXF Preview (Requires active license)
+        2: EULA & Privacy Notice
+        3: Activation & License Page
+        4: Application Settings
+        5: Catalog & DXF Index Manager
+        6: Search History
+        7: Help, Quick Start Guide & Diagnostics
+        8: Software Updates
+        9: Backup, Restore & Data Privacy
+        10: About Design Matcher & 3rd-Party Licenses
+        11: Contact Support & Zero-PII Log Exporter
+        """
         if tab_id == 1:
             allowed, lic_msg = self.license_manager.is_operation_allowed("dxf_preview")
             if not allowed:
-                self.nav_tab_matcher.setChecked(True)
-                self.nav_tab_dxf_preview.setChecked(False)
-                self.main_stack.setCurrentIndex(0)
+                self.open_page(0)
                 show_subscription_expired_dialog(self, self.license_manager, lic_msg)
                 self._update_license_indicator()
                 return
 
         self.nav_tab_matcher.setChecked(tab_id == 0)
         self.nav_tab_dxf_preview.setChecked(tab_id == 1)
+        if hasattr(self, "nav_tab_catalogs"):
+            self.nav_tab_catalogs.setChecked(tab_id == 5)
+        if hasattr(self, "nav_tab_history"):
+            self.nav_tab_history.setChecked(tab_id == 6)
+
+        # Refresh page contents when navigating to them
+        if tab_id == 2:
+            accepted = self.catalog_index.db.get_setting("eula_accepted", "0") == "1"
+            self.eula_page.set_already_accepted(accepted)
+        elif tab_id == 3:
+            self.license_page.refresh()
+        elif tab_id == 4:
+            self.settings_page._load_values()
+        elif tab_id == 5:
+            self.catalog_mgr_page.refresh()
+        elif tab_id == 6:
+            self.history_page.refresh()
+
         self.main_stack.setCurrentIndex(tab_id)
+
         if tab_id == 1:
             # Auto-load test11.dxf or first file if nothing loaded yet in DXF Preview
             if self.dxf_preview_page.current_dxf_path is None:
                 p_dxf = Path.cwd() / "test11.dxf"
                 if p_dxf.is_file():
                     self.dxf_preview_page.load_file(p_dxf)
+
+    def _on_main_tab_changed(self, tab_id: int) -> None:
+        """Alias for open_page."""
+        self.open_page(tab_id)
 
     def switch_to_dxf_preview(
         self,
@@ -1506,6 +1646,7 @@ class MainWindow(QMainWindow):
             self.status_bar.showMessage(f"Found {total_found} design(s) matching code '{query}'.")
         else:
             self.status_bar.showMessage(f"No designs found matching code '{query}'.")
+        self._record_search_to_history("code", query, results)
 
     def _on_dxf_search_completed(self, results: List[SearchResult]) -> None:
         self.search_btn.setEnabled(True)
@@ -1523,6 +1664,8 @@ class MainWindow(QMainWindow):
         self.tab_pdf_btn.setText(f"📄 Top PDF Catalogs [{pdf_count}]")
 
         self._render_results()
+        query_desc = Path(self.reference_dxf_path).name if self.reference_dxf_path else "DXF Drawing"
+        self._record_search_to_history("mode_b", query_desc, results)
 
         if results:
             top_res = results[0]
@@ -1571,6 +1714,8 @@ class MainWindow(QMainWindow):
         self.tab_pdf_btn.setText(f"📄 Top PDF Catalogs [{pdf_count}]")
 
         self._render_results()
+        query_desc = Path(self.reference_dxf_path).name if self.search_mode == "mode_b" and self.reference_dxf_path else (self.code_search_input.text() or "Visual Pattern")
+        self._record_search_to_history(self.search_mode, query_desc, results)
 
         if results:
             top_res = results[0]
@@ -1720,10 +1865,174 @@ class MainWindow(QMainWindow):
         self.index_worker.error_signal.connect(on_error)
         self.index_worker.start()
 
+    def _setup_menu_bar(self) -> None:
+        """Configures native desktop menu bar with shortcuts."""
+        mb = self.menuBar()
+        mb.setStyleSheet(
+            "QMenuBar { background-color: #0F172A; color: #F1F5F9; font-size: 12px; border-bottom: 1px solid #1E293B; } "
+            "QMenuBar::item:selected { background-color: #2563EB; color: #FFFFFF; } "
+            "QMenu { background-color: #1E293B; color: #F1F5F9; border: 1px solid #334155; padding: 4px; } "
+            "QMenu::item:selected { background-color: #2563EB; color: #FFFFFF; }"
+        )
+
+        # File Menu
+        file_menu = mb.addMenu("&File")
+        act_open_photo = file_menu.addAction("Open Customer Photo / DXF...")
+        act_open_photo.setShortcut("Ctrl+O")
+        act_open_photo.triggered.connect(self._select_photo_file)
+
+        act_history = file_menu.addAction("Search History")
+        act_history.setShortcut("Ctrl+H")
+        act_history.triggered.connect(lambda: self.open_page(6))
+
+        file_menu.addSeparator()
+        act_backup = file_menu.addAction("Backup & Restore...")
+        act_backup.triggered.connect(lambda: self.open_page(9))
+
+        file_menu.addSeparator()
+        act_exit = file_menu.addAction("Exit")
+        act_exit.setShortcut("Ctrl+Q")
+        act_exit.triggered.connect(self.close)
+
+        # Catalogs Menu
+        cat_menu = mb.addMenu("&Catalogs")
+        act_cat_mgr = cat_menu.addAction("Catalog & DXF Manager")
+        act_cat_mgr.triggered.connect(lambda: self.open_page(5))
+        act_idx_dxf = cat_menu.addAction("Index DXF CAD Library...")
+        act_idx_dxf.triggered.connect(self._start_dxf_indexing_flow)
+        act_idx_pdf = cat_menu.addAction("Index PDF Catalogs...")
+        act_idx_pdf.triggered.connect(self._start_indexing_flow)
+
+        # View Menu
+        view_menu = mb.addMenu("&View")
+        act_view_matcher = view_menu.addAction("1. Matcher")
+        act_view_matcher.setShortcut("F1")
+        act_view_matcher.triggered.connect(lambda: self.open_page(0))
+        act_view_preview = view_menu.addAction("2. DXF Preview")
+        act_view_preview.setShortcut("F2")
+        act_view_preview.triggered.connect(lambda: self.open_page(1))
+        act_view_cat = view_menu.addAction("3. Catalogs")
+        act_view_cat.setShortcut("F3")
+        act_view_cat.triggered.connect(lambda: self.open_page(5))
+        act_view_hist = view_menu.addAction("4. History")
+        act_view_hist.setShortcut("F4")
+        act_view_hist.triggered.connect(lambda: self.open_page(6))
+
+        # Tools Menu
+        tools_menu = mb.addMenu("&Tools")
+        act_settings = tools_menu.addAction("Application Settings...")
+        act_settings.setShortcut("Ctrl+,")
+        act_settings.triggered.connect(lambda: self.open_page(4))
+
+        # License Menu
+        lic_menu = mb.addMenu("&License")
+        act_lic = lic_menu.addAction("Activation & License Status...")
+        act_lic.triggered.connect(lambda: self.open_page(3))
+        act_updates = lic_menu.addAction("Check for Updates...")
+        act_updates.triggered.connect(lambda: self.open_page(8))
+
+        # Help Menu
+        help_menu = mb.addMenu("&Help")
+        act_help = help_menu.addAction("Quick Start Guide & Troubleshooting")
+        act_help.setShortcut("F12")
+        act_help.triggered.connect(lambda: self.open_page(7))
+        act_support = help_menu.addAction("Contact Support / Report a Problem...")
+        act_support.triggered.connect(lambda: self.open_page(11))
+        act_eula = help_menu.addAction("End-User License Agreement (EULA)")
+        act_eula.triggered.connect(lambda: self.open_page(2))
+        help_menu.addSeparator()
+        act_about = help_menu.addAction("About Design Matcher")
+        act_about.triggered.connect(lambda: self.open_page(10))
+
     def _open_settings(self) -> None:
-        dlg = SettingsDialog(self.catalog_index.db, self)
-        if dlg.exec():
-            self.update_catalog_stats()
+        """Opens in-app Application Settings page."""
+        self.open_page(4)
+
+    def _check_eula_on_startup(self) -> None:
+        """Checks if first-run EULA has been accepted; if not, routes to EulaPage."""
+        accepted = self.catalog_index.db.get_setting("eula_accepted", "0")
+        if accepted != "1":
+            self.eula_page.set_already_accepted(False)
+            if not os.environ.get("PYTEST_CURRENT_TEST") or os.environ.get("TEST_EULA_STARTUP"):
+                self.open_page(2)
+        else:
+            self.eula_page.set_already_accepted(True)
+
+    def _on_eula_accepted(self) -> None:
+        """Records EULA acceptance and returns to Matcher page."""
+        self.catalog_index.db.set_setting("eula_accepted", "1")
+        self.eula_page.set_already_accepted(True)
+        self.open_page(0)
+        self.status_bar.showMessage("Agreement accepted. Welcome to Design Matcher!", 5000)
+
+    def _on_data_reset(self) -> None:
+        """Handles full factory reset or catalog index purge from BackupPage."""
+        self.update_catalog_stats()
+        self.results_count_label.setText("0 matches")
+        while self.results_layout.count():
+            item = self.results_layout.takeAt(0)
+            if item is not None and item.widget() is not None:
+                item.widget().deleteLater()
+        self.result_cards.clear()
+        self.placeholder_label.setVisible(True)
+        self.tab_all_btn.setText("All Matches")
+        self.tab_dxf_btn.setText("📐 Top 5 DXF (Vectors)")
+        self.tab_pdf_btn.setText("📄 Top 5 PDF Catalogs")
+        self.open_page(0)
+        self.status_bar.showMessage("Application data reset successfully.", 5000)
+
+    def _on_rerun_search(self, mode: str, query_text: str) -> None:
+        """Reruns a previously executed search chosen from Search History."""
+        self.open_page(0)
+        if not query_text or query_text == "-":
+            return
+        if mode == "code" or query_text.upper().startswith("PD") or not Path(query_text).exists():
+            self.code_search_input.setText(query_text)
+            self._search_by_design_code()
+        elif Path(query_text).is_file():
+            self._load_photo(query_text)
+            if query_text.lower().endswith(".dxf"):
+                self._start_search()
+
+    def _select_photo_file(self) -> None:
+        """Prompts user to select customer photo or CAD drawing file."""
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select Customer Photo or DXF Design",
+            "",
+            "Supported Files (*.jpg *.jpeg *.png *.bmp *.webp *.dxf);;Images (*.jpg *.jpeg *.png *.bmp *.webp);;DXF Files (*.dxf);;All Files (*.*)",
+        )
+        if file_path:
+            self._load_photo(file_path)
+
+    def _load_photo(self, path: str) -> None:
+        """Loads and normalizes an image file into the drop area."""
+        if path.lower().endswith(".dxf"):
+            self._load_reference_dxf(path)
+            return
+        bgr = cv2.imread(path)
+        if bgr is not None:
+            self.drop_area.set_image(bgr)
+            self._on_photo_loaded(bgr, path)
+
+    def _record_search_to_history(self, search_mode: str, query_text: str, results: List[SearchResult]) -> None:
+        """Logs completed searches into local SQLite database for history viewer."""
+        try:
+            top_code = None
+            top_score = 0.0
+            if results:
+                top = results[0]
+                top_code = getattr(top, "design_code", None) or getattr(top, "pdf_name", "")
+                top_score = float(getattr(top, "confidence_pct", 0.0) / 100.0)
+            self.catalog_index.db.add_search_history(
+                search_mode=search_mode,
+                query_text=query_text,
+                results_count=len(results),
+                top_match_code=top_code,
+                top_match_score=top_score,
+            )
+        except Exception as e:
+            logger.debug(f"Search history could not be logged: {e}")
 
     def _update_license_indicator(self) -> None:
         """Updates header license button appearance and warning notices."""
@@ -1780,11 +2089,8 @@ class MainWindow(QMainWindow):
                 self._on_main_tab_changed(0)
 
     def _open_license_dialog(self) -> None:
-        """Opens the License & Subscription Management dialog."""
-        dlg = LicenseDialog(self.license_manager, self)
-        dlg.license_updated.connect(self._update_license_indicator)
-        dlg.exec()
-        self._update_license_indicator()
+        """Opens in-app Activation & License page."""
+        self.open_page(3)
 
     def _check_license_on_startup(self) -> None:
         """Emits notification if license is expiring soon or expired, and triggers background online heartbeat."""
