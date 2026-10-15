@@ -1,0 +1,27 @@
+# Build & Packaging outputs
+dist/
+build/
+Output/
+*.dmg
+*.exe
+*.pkg
+*.app
+
+# Python & Virtualenv
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+
+# OS specific
+.DS_Store
+Thumbs.db
+
+# Database & Runtime logs
+*.db-shm
+*.db-wal
+*.log
+dxf_ingest.log
