@@ -298,9 +298,10 @@ def test_start_dxf_indexing_flow_qfiledialog(qapp, tmp_path, monkeypatch):
     dxf_dir = tmp_path / "dxf_library"
     dxf_dir.mkdir(parents=True, exist_ok=True)
 
-    # Mock QFileDialog.getExistingDirectory and worker.start to test GUI logic safely
+    # Mock QFileDialog.getExistingDirectory, license check, and worker.start to test GUI logic safely
     monkeypatch.setattr(QFileDialog, "getExistingDirectory", lambda *args, **kwargs: str(dxf_dir))
     monkeypatch.setattr(DxfIndexWorker, "start", lambda self: None)
+    monkeypatch.setattr(win.license_manager, "is_operation_allowed", lambda op: (True, "Licensed"))
 
     # Should run without NameError: name 'QFileDialog' is not defined
     win._start_dxf_indexing_flow()

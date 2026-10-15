@@ -478,7 +478,7 @@ def test_dxf_preview_page(qtbot, synthetic_dxf_file: Path, tmp_path: Path):
     assert has_foreground, "Exported image should contain drawn CAD vectors, not an empty background."
 
 
-def test_main_window_tabs_and_dxf_preview(qtbot, synthetic_dxf_file: Path, tmp_path: Path):
+def test_main_window_tabs_and_dxf_preview(qtbot, synthetic_dxf_file: Path, tmp_path: Path, monkeypatch):
     """Verifies MainWindow top navigation tabs and integration with DxfPreviewPage."""
     try:
         from app.gui.main_window import MainWindow
@@ -486,6 +486,19 @@ def test_main_window_tabs_and_dxf_preview(qtbot, synthetic_dxf_file: Path, tmp_p
         from design_matcher.app.gui.main_window import MainWindow
 
     win = MainWindow(data_dir=tmp_path)
+    try:
+        from app.core.licensing.manager import LicenseCheckResult, LicenseStatus
+    except ImportError:
+        from design_matcher.app.core.licensing.manager import LicenseCheckResult, LicenseStatus
+    monkeypatch.setattr(win.license_manager, "is_operation_allowed", lambda op: (True, "Licensed"))
+    monkeypatch.setattr(
+        win.license_manager,
+        "check_license",
+        lambda *args, **kwargs: LicenseCheckResult(
+            is_valid=True, status=LicenseStatus.ACTIVE, days_remaining=100, message="Active"
+        ),
+    )
+    win._update_license_indicator()
     qtbot.addWidget(win)
     win.show()
 

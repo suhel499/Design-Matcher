@@ -23,6 +23,7 @@ if str(_APP_DIR) not in sys.path:
 
 from app.core.embed import DEFAULT_MODEL_NAME, DINOv2Embedder
 from app.core.index import CatalogIndex, IndexProgress, get_default_data_dir
+from app.core.licensing.manager import LicenseManager
 from app.core.search import DesignSearcher
 
 
@@ -41,6 +42,12 @@ def cmd_index(args: argparse.Namespace) -> int:
         return 1
 
     data_dir = Path(args.data_dir).resolve() if args.data_dir else get_default_data_dir()
+    lic_mgr = LicenseManager(data_dir=data_dir)
+    allowed, lic_msg = lic_mgr.is_operation_allowed("index_pdf")
+    if not allowed:
+        print(f"\n[LICENSE ERROR] Operation denied: {lic_msg}", file=sys.stderr)
+        print("Please activate your subscription or renew your license to continue.\n", file=sys.stderr)
+        return 1
     print(f"\n=======================================================")
     print(f" Design Matcher - Catalog Indexing")
     print(f"=======================================================")
@@ -98,6 +105,13 @@ def cmd_search(args: argparse.Namespace) -> int:
         return 1
 
     data_dir = Path(args.data_dir).resolve() if args.data_dir else get_default_data_dir()
+    lic_mgr = LicenseManager(data_dir=data_dir)
+    allowed, lic_msg = lic_mgr.is_operation_allowed("search_pdf")
+    if not allowed:
+        print(f"\n[LICENSE ERROR] Operation denied: {lic_msg}", file=sys.stderr)
+        print("Please activate your subscription or renew your license to continue.\n", file=sys.stderr)
+        return 1
+
     catalog_index = CatalogIndex(data_dir=data_dir)
 
     if catalog_index.total_vectors == 0:

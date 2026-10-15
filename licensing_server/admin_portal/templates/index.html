@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Design Matcher — Subscription & License Authority</title>
+  <link rel="stylesheet" href="/admin-static/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div id="loginOverlay" class="login-overlay">
+    <div class="login-card">
+      <div class="brand-header">
+        <div class="brand-icon">🔑</div>
+        <h2>License Authority</h2>
+        <p>Administrative Control Center</p>
+      </div>
+      <form id="loginForm">
+        <div class="form-group">
+          <label>Username</label>
+          <input type="text" id="loginUsername" required placeholder="admin" value="admin">
+        </div>
+        <div class="form-group">
+          <label>Password</label>
+          <input type="password" id="loginPassword" required placeholder="••••••••" value="AdminPass@2026">
+        </div>
+        <button type="submit" class="btn btn-primary btn-block">Sign In</button>
+        <div id="loginError" class="error-msg"></div>
+      </form>
+    </div>
+  </div>
+
+  <div id="appContainer" class="app-layout" style="display: none;">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="sidebar-brand">
+        <span class="logo-icon">⚡</span>
+        <div>
+          <h3>Design Matcher</h3>
+          <span class="sub">Licensing Portal</span>
+        </div>
+      </div>
+      <nav class="sidebar-nav">
+        <button class="nav-item active" data-tab="tab-overview">📊 Dashboard</button>
+        <button class="nav-item" data-tab="tab-licenses">🔑 Licenses</button>
+        <button class="nav-item" data-tab="tab-customers">👥 Customers</button>
+        <button class="nav-item" data-tab="tab-offline">💾 Offline Air-Gap Signer</button>
+        <button class="nav-item" data-tab="tab-devices">💻 Device Activations</button>
+        <button class="nav-item" data-tab="tab-expirations">⏳ Expirations & Renewals</button>
+        <button class="nav-item" data-tab="tab-audit">📜 Audit Logs</button>
+      </nav>
+      <div class="sidebar-footer">
+        <div class="user-chip">
+          <div class="user-avatar" id="adminAvatar">A</div>
+          <div class="user-info">
+            <span class="name" id="adminUserDisplay">admin</span>
+            <span class="role">Authority Admin</span>
+          </div>
+        </div>
+        <button id="logoutBtn" class="btn-logout" title="Sign Out">🚪 Logout</button>
+      </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main-content">
+      <header class="topbar">
+        <h1 id="pageTitle">Licensing Dashboard</h1>
+        <div class="topbar-actions">
+          <button id="btnNewCustomer" class="btn btn-secondary">+ New Customer</button>
+          <button id="btnNewLicense" class="btn btn-primary">+ Generate License</button>
+        </div>
+      </header>
+
+      <div class="content-scroll">
+        <!-- Tab 1: Overview -->
+        <section id="tab-overview" class="tab-panel active">
+          <div class="stats-grid">
+            <div class="stat-card">
+              <span class="stat-title">Active Licenses</span>
+              <span class="stat-value" id="statActiveLicenses">0</span>
+              <span class="stat-desc">Generating recurring revenue</span>
+            </div>
+            <div class="stat-card warning">
+              <span class="stat-title">Expiring in 30 Days</span>
+              <span class="stat-value" id="statExpiringSoon">0</span>
+              <span class="stat-desc">Pending renewal notice</span>
+            </div>
+            <div class="stat-card">
+              <span class="stat-title">Active Computer Seats</span>
+              <span class="stat-value" id="statActiveDevices">0</span>
+              <span class="stat-desc">Hardware bound installations</span>
+            </div>
+            <div class="stat-card">
+              <span class="stat-title">Total Customers</span>
+              <span class="stat-value" id="statTotalCustomers">0</span>
+              <span class="stat-desc">Registered commercial accounts</span>
+            </div>
+          </div>
+
+          <div class="card mt-4">
+            <div class="card-header">
+              <h3>Recently Issued Licenses</h3>
+            </div>
+            <div class="table-container">
+              <table id="recentLicensesTable" class="data-table">
+                <thead>
+                  <tr>
+                    <th>License Key</th>
+                    <th>Customer</th>
+                    <th>Plan</th>
+                    <th>Seats</th>
+                    <th>Expires At</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody><tr><td colspan="7" class="loading">Loading licenses...</td></tr></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- Tab 2: Licenses -->
+        <section id="tab-licenses" class="tab-panel">
+          <div class="card">
+            <div class="card-header flex-between">
+              <h3>All Licenses</h3>
+              <div class="filter-controls">
+                <select id="licenseStatusFilter">
+                  <option value="">All Statuses</option>
+                  <option value="ACTIVE">ACTIVE</option>
+                  <option value="EXPIRED">EXPIRED</option>
+                  <option value="SUSPENDED">SUSPENDED</option>
+                  <option value="REVOKED">REVOKED</option>
+                </select>
+                <button id="btnRefreshLicenses" class="btn btn-sm">Refresh</button>
+              </div>
+            </div>
+            <div class="table-container">
+              <table id="allLicensesTable" class="data-table">
+                <thead>
+                  <tr>
+                    <th>License Key</th>
+                    <th>Customer</th>
+                    <th>Plan</th>
+                    <th>Activated Seats</th>
+                    <th>Start Date</th>
+                    <th>Expiration</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- Tab 3: Customers -->
+        <section id="tab-customers" class="tab-panel">
+          <div class="card">
+            <div class="card-header flex-between">
+              <h3>Customer Accounts</h3>
+              <input type="text" id="customerSearchInput" placeholder="Search customer name, email, company..." style="width: 280px;">
+            </div>
+            <div class="table-container">
+              <table id="customersTable" class="data-table">
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Email</th>
+                    <th>Company</th>
+                    <th>Phone</th>
+                    <th>Created</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- Tab 4: Offline Air-Gap Signer -->
+        <section id="tab-offline" class="tab-panel">
+          <div class="card">
+            <div class="card-header">
+              <h3>Offline Air-Gap Response Generator</h3>
+              <p class="subtitle">For customers operating CNC and laser cutting machines in isolated offline environments without internet access.</p>
+            </div>
+            <div class="card-body">
+              <div class="offline-steps">
+                <div class="step-badge">1</div>
+                <p>Paste the <strong>Activation Request (.dmreq)</strong> generated by the customer's desktop software:</p>
+              </div>
+              <textarea id="offlineRequestInput" rows="7" class="code-input" placeholder='Paste {"version": 1, "license_key": "DM-...", "machine_fingerprint": "...", ...}'></textarea>
+
+              <div class="mt-3">
+                <button id="btnSignOffline" class="btn btn-primary">Generate Ed25519-Signed License (.lic)</button>
+              </div>
+
+              <div id="offlineResultArea" class="mt-4" style="display: none;">
+                <div class="alert alert-success">
+                  <strong>Signed Response Generated Successfully!</strong>
+                  <p>Deliver the file below to the customer to import into their Design Matcher application.</p>
+                </div>
+                <div class="meta-box mb-2">
+                  <span><strong>License:</strong> <span id="offResKey"></span></span> |
+                  <span><strong>Hardware Binding:</strong> <span id="offResHw"></span></span> |
+                  <span><strong>Expires:</strong> <span id="offResExp"></span></span>
+                </div>
+                <textarea id="offlineResponseOutput" rows="6" class="code-input" readonly></textarea>
+                <div class="mt-2">
+                  <button id="btnDownloadLic" class="btn btn-secondary">⬇️ Download .lic File</button>
+                  <button id="btnCopyLic" class="btn btn-outline">📋 Copy to Clipboard</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Tab 5: Device Activations -->
+        <section id="tab-devices" class="tab-panel">
+          <div class="card">
+            <div class="card-header flex-between">
+              <h3>Active Computer Seats & Device Bindings</h3>
+              <button id="btnRefreshDevices" class="btn btn-sm">Refresh</button>
+            </div>
+            <div class="table-container">
+              <table id="devicesTable" class="data-table">
+                <thead>
+                  <tr>
+                    <th>Computer Name</th>
+                    <th>Hardware Fingerprint</th>
+                    <th>OS Details</th>
+                    <th>License Key</th>
+                    <th>Customer</th>
+                    <th>Last Checkin</th>
+                    <th>Seat Status</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- Tab 6: Expirations & Renewals -->
+        <section id="tab-expirations" class="tab-panel">
+          <div class="card">
+            <div class="card-header flex-between">
+              <h3>Subscription Expiration Forecast (Next 60 Days)</h3>
+              <button id="btnRefreshExpirations" class="btn btn-sm">Refresh Forecast</button>
+            </div>
+            <div class="table-container">
+              <table id="expirationsTable" class="data-table">
+                <thead>
+                  <tr>
+                    <th>Customer</th>
+                    <th>Company</th>
+                    <th>License Key</th>
+                    <th>Plan</th>
+                    <th>Expires At</th>
+                    <th>Days Remaining</th>
+                    <th>Status</th>
+                    <th>Quick Action</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- Tab 7: Audit Logs -->
+        <section id="tab-audit" class="tab-panel">
+          <div class="card">
+            <div class="card-header flex-between">
+              <h3>Administrative & Security Audit Trail</h3>
+              <button id="btnRefreshAudit" class="btn btn-sm">Refresh Logs</button>
+            </div>
+            <div class="table-container">
+              <table id="auditTable" class="data-table">
+                <thead>
+                  <tr>
+                    <th>Timestamp (UTC)</th>
+                    <th>Actor</th>
+                    <th>Action</th>
+                    <th>Resource</th>
+                    <th>Details</th>
+                    <th>IP Address</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <!-- Modal: New Customer -->
+  <div id="customerModal" class="modal-backdrop">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>Create New Customer</h3>
+        <button class="modal-close" data-close="customerModal">&times;</button>
+      </div>
+      <form id="createCustomerForm">
+        <div class="modal-body">
+          <div class="form-group">
+            <label>Customer / Contact Name *</label>
+            <input type="text" id="custName" required placeholder="e.g. John Doe">
+          </div>
+          <div class="form-group">
+            <label>Email Address *</label>
+            <input type="email" id="custEmail" required placeholder="e.g. john@fabworks.com">
+          </div>
+          <div class="form-group">
+            <label>Company / Fabrication Facility</label>
+            <input type="text" id="custCompany" placeholder="e.g. Acme Precision Cutting Ltd.">
+          </div>
+          <div class="form-group">
+            <label>Phone Number</label>
+            <input type="text" id="custPhone" placeholder="e.g. +1 555-0199">
+          </div>
+          <div class="form-group">
+            <label>Notes</label>
+            <textarea id="custNotes" rows="2" placeholder="Account notes..."></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline" data-close="customerModal">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save Customer</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal: Generate License -->
+  <div id="licenseModal" class="modal-backdrop">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>Generate Customer License</h3>
+        <button class="modal-close" data-close="licenseModal">&times;</button>
+      </div>
+      <form id="createLicenseForm">
+        <div class="modal-body">
+          <div class="form-group">
+            <label>Customer *</label>
+            <select id="licCustomerSelect" required></select>
+          </div>
+          <div class="form-group">
+            <label>Subscription Duration Plan *</label>
+            <select id="licPlanType" required>
+              <option value="1_year">1 Year Subscription</option>
+              <option value="3_years">3 Years Subscription (Multi-Year)</option>
+              <option value="5_years">5 Years Subscription (Enterprise)</option>
+              <option value="custom">Custom Duration / Dates</option>
+            </select>
+          </div>
+          <div id="customDatesGroup" style="display: none;">
+            <div class="form-row">
+              <div class="form-group">
+                <label>Start Date (UTC)</label>
+                <input type="datetime-local" id="licCustomStart">
+              </div>
+              <div class="form-group">
+                <label>Expiration Date (UTC)</label>
+                <input type="datetime-local" id="licCustomExp">
+              </div>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Max Computer Activations (Seats) *</label>
+            <input type="number" id="licMaxSeats" min="1" max="25" value="1" required>
+          </div>
+          <div class="form-group">
+            <label>Internal Notes</label>
+            <textarea id="licNotes" rows="2" placeholder="e.g. PO #98234, Authorized by Sales"></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline" data-close="licenseModal">Cancel</button>
+          <button type="submit" class="btn btn-primary">Create & Sign License</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal: Renew License -->
+  <div id="renewModal" class="modal-backdrop">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>Renew / Extend Subscription</h3>
+        <button class="modal-close" data-close="renewModal">&times;</button>
+      </div>
+      <form id="renewLicenseForm">
+        <input type="hidden" id="renewLicId">
+        <div class="modal-body">
+          <div class="meta-box mb-3">
+            <div><strong>License:</strong> <span id="renewKeyDisplay"></span></div>
+            <div><strong>Customer:</strong> <span id="renewCustDisplay"></span></div>
+            <div><strong>Current Expiration:</strong> <span id="renewCurrExpDisplay"></span></div>
+          </div>
+          <div class="form-group">
+            <label>Renewal Extension Plan *</label>
+            <select id="renewPlanType" required>
+              <option value="1_year">+ 1 Year Extension</option>
+              <option value="3_years">+ 3 Years Extension</option>
+              <option value="5_years">+ 5 Years Extension</option>
+              <option value="custom">Custom New Expiration Date</option>
+            </select>
+          </div>
+          <div id="renewCustomDateGroup" style="display: none;" class="form-group">
+            <label>New Expiration Date (UTC) *</label>
+            <input type="datetime-local" id="renewCustomExp">
+          </div>
+          <div class="form-group">
+            <label>Payment Reference / Invoice Number</label>
+            <input type="text" id="renewPaymentRef" placeholder="e.g. INV-2026-0812 / Stripe / Wire">
+          </div>
+          <div class="form-group">
+            <label>Renewal Notes</label>
+            <textarea id="renewNotes" rows="2" placeholder="Renewal notes..."></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline" data-close="renewModal">Cancel</button>
+          <button type="submit" class="btn btn-primary">Process Renewal</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="/admin-static/app.js"></script>
+</body>
+</html>

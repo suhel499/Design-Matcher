@@ -242,3 +242,18 @@ class DxfMatchWorker(QThread):
             self.error_signal.emit(str(exc))
 
 
+class LicenseSyncWorker(QThread):
+    """Background worker that validates the license online without blocking the UI."""
+
+    sync_finished = Signal(object)  # LicenseCheckResult
+
+    def __init__(self, license_manager, parent: Optional[QObject] = None) -> None:
+        super().__init__(parent)
+        self.license_manager = license_manager
+
+    def run(self) -> None:
+        verdict = self.license_manager.validate_online()
+        self.sync_finished.emit(verdict)
+
+
+

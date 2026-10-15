@@ -46,6 +46,16 @@ hiddenimports = [
     "shapely",
     "shapely.geometry",
     "shapely.ops",
+    "cryptography",
+    "cryptography.hazmat.primitives.asymmetric.ed25519",
+    "httpx",
+    "app.core.licensing",
+    "app.core.licensing.crypto",
+    "app.core.licensing.hardware",
+    "app.core.licensing.manager",
+    "app.core.licensing.models",
+    "app.core.licensing.public_key",
+    "app.gui.license_dialog",
 ]
 
 # Collect package data files for transformers, torch, pypdfium2, ezdxf, shapely

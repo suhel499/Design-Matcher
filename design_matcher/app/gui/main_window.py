@@ -14,8 +14,8 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import cv2
 import numpy as np
-from PySide6.QtCore import QSize, Qt
-from PySide6.QtGui import QColor, QFont, QIcon, QImage, QPixmap
+from PySide6.QtCore import QEvent, QObject, QSize, Qt, QTimer
+from PySide6.QtGui import QColor, QFont, QIcon, QImage, QMouseEvent, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
     QButtonGroup,
@@ -50,7 +50,9 @@ from app.core.preprocess import (
     four_point_perspective_transform,
     normalize_stencil,
 )
+from app.core.licensing.manager import LicenseManager
 from app.core.search import DesignSearcher, SearchResult
+from app.gui.license_dialog import LicenseDialog, show_subscription_expired_dialog
 from app.gui.widgets import (
     CornerWarpDialog,
     CropDialog,
@@ -63,6 +65,7 @@ from app.gui.workers import (
     DxfIndexWorker,
     DxfMatchWorker,
     IndexWorker,
+    LicenseSyncWorker,
     PreprocessWorker,
     SearchWorker,
 )
@@ -249,6 +252,13 @@ QPushButton#mainNavTab:checked {
     border: 1px solid #3B82F6;
     font-weight: 700;
 }
+
+QPushButton#mainNavTab:disabled,
+QPushButton#mainNavTab[locked="true"] {
+    background-color: #0F172A;
+    color: #64748B;
+    border: 1px dashed #334155;
+}
 """
 
 
@@ -265,6 +275,7 @@ class MainWindow(QMainWindow):
         self.catalog_index = CatalogIndex(data_dir=data_dir)
         self.searcher = DesignSearcher(self.catalog_index)
         self.dxf_db = DxfDatabase(self.catalog_index.data_dir / "dxf_library.db")
+        self.license_manager = LicenseManager(data_dir=self.catalog_index.data_dir)
 
         # State
         self.search_mode: str = "mode_a"  # "mode_a": Photo/Stencil -> DXF, "mode_b": Reference DXF -> DXF
@@ -283,6 +294,10 @@ class MainWindow(QMainWindow):
         self.preprocess_worker: Optional[PreprocessWorker] = None
         self.dxf_index_worker: Optional[DxfIndexWorker] = None
         self.dxf_match_worker: Optional[DxfMatchWorker] = None
+        self.license_sync_worker: Optional[LicenseSyncWorker] = None
+        self.license_sync_timer = QTimer(self)
+        self.license_sync_timer.timeout.connect(self._sync_license_with_server)
+        self.license_sync_timer.start(30 * 60 * 1000)  # background check every 30 mins
 
         # Viewer & Results state
         self.dxf_viewer_window: Optional[Any] = None
@@ -293,6 +308,8 @@ class MainWindow(QMainWindow):
 
         self._setup_ui()
         self.update_catalog_stats()
+        self._update_license_indicator()
+        self._check_license_on_startup()
 
     def _setup_ui(self) -> None:
         self.setStyleSheet(STYLE_SHEET)
@@ -328,12 +345,13 @@ class MainWindow(QMainWindow):
         self.nav_tab_dxf_preview.setCheckable(True)
         self.nav_tab_dxf_preview.setChecked(False)
         self.nav_tab_dxf_preview.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.nav_tab_dxf_preview.installEventFilter(self)
 
         self.nav_button_group = QButtonGroup(self)
         self.nav_button_group.addButton(self.nav_tab_matcher, 0)
         self.nav_button_group.addButton(self.nav_tab_dxf_preview, 1)
         self.nav_tab_matcher.clicked.connect(lambda *_: self._on_main_tab_changed(0))
-        self.nav_tab_dxf_preview.clicked.connect(lambda *_: self._on_main_tab_changed(1))
+        self.nav_tab_dxf_preview.clicked.connect(self._on_dxf_preview_tab_clicked)
 
         # Aliases for convenience
         self.tab_matcher_btn = self.nav_tab_matcher
@@ -395,6 +413,16 @@ class MainWindow(QMainWindow):
         settings_btn.setObjectName("headerBtn")
         settings_btn.clicked.connect(self._open_settings)
         header_layout.addWidget(settings_btn)
+
+        self.license_btn = QPushButton("🔑 License", header)
+        self.license_btn.setObjectName("headerBtn")
+        self.license_btn.setStyleSheet(
+            "QPushButton { background: #1E293B; color: #38BDF8; border: 1px solid #0284C7; "
+            "padding: 5px 12px; font-weight: 600; font-size: 12px; border-radius: 5px; } "
+            "QPushButton:hover { background: #0369A1; color: white; }"
+        )
+        self.license_btn.clicked.connect(self._open_license_dialog)
+        header_layout.addWidget(self.license_btn)
 
         main_layout.addWidget(header)
 
@@ -1090,6 +1118,14 @@ class MainWindow(QMainWindow):
         self._display_mask_preview()
 
     def _start_search(self) -> None:
+        # 0. License Verification Guard
+        op_name = "search_dxf" if self.search_mode == "mode_b" else "search_pdf"
+        allowed, lic_msg = self.license_manager.is_operation_allowed(op_name)
+        if not allowed:
+            show_subscription_expired_dialog(self, self.license_manager, lic_msg)
+            self._update_license_indicator()
+            return
+
         top_k_str = self.catalog_index.db.get_setting("top_k", "5")
         top_k = int(top_k_str) if top_k_str else 5
         chamfer_str = self.catalog_index.db.get_setting("chamfer_threshold", "0.12")
@@ -1355,8 +1391,50 @@ class MainWindow(QMainWindow):
             )
             self.pdf_preview_label.setStyleSheet("color: #94A3B8; font-size: 13px;")
 
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:
+        """
+        Intercepts interactions on locked/disabled controls to provide
+        immediate license feedback and subscription renewal actions.
+        """
+        if watched == getattr(self, "nav_tab_dxf_preview", None):
+            if event.type() == QEvent.Type.MouseButtonPress:
+                if isinstance(event, QMouseEvent) and event.button() == Qt.MouseButton.LeftButton:
+                    allowed, lic_msg = self.license_manager.is_operation_allowed("dxf_preview")
+                    if not allowed:
+                        self.nav_tab_matcher.setChecked(True)
+                        self.nav_tab_dxf_preview.setChecked(False)
+                        show_subscription_expired_dialog(self, self.license_manager, lic_msg)
+                        self._update_license_indicator()
+                        return True
+        return super().eventFilter(watched, event)
+
+    def _on_dxf_preview_tab_clicked(self) -> None:
+        """
+        Handler when the user clicks '2. DXF Preview'.
+        Validates license validity before switching to the DXF Preview view.
+        """
+        allowed, lic_msg = self.license_manager.is_operation_allowed("dxf_preview")
+        if not allowed:
+            self.nav_tab_matcher.setChecked(True)
+            self.nav_tab_dxf_preview.setChecked(False)
+            self.main_stack.setCurrentIndex(0)
+            show_subscription_expired_dialog(self, self.license_manager, lic_msg)
+            self._update_license_indicator()
+            return
+        self._on_main_tab_changed(1)
+
     def _on_main_tab_changed(self, tab_id: int) -> None:
         """Switches between '1. Matcher' and '2. DXF Preview' tabs."""
+        if tab_id == 1:
+            allowed, lic_msg = self.license_manager.is_operation_allowed("dxf_preview")
+            if not allowed:
+                self.nav_tab_matcher.setChecked(True)
+                self.nav_tab_dxf_preview.setChecked(False)
+                self.main_stack.setCurrentIndex(0)
+                show_subscription_expired_dialog(self, self.license_manager, lic_msg)
+                self._update_license_indicator()
+                return
+
         self.nav_tab_matcher.setChecked(tab_id == 0)
         self.nav_tab_dxf_preview.setChecked(tab_id == 1)
         self.main_stack.setCurrentIndex(tab_id)
@@ -1374,11 +1452,23 @@ class MainWindow(QMainWindow):
         matched_code: Optional[str] = None,
     ) -> None:
         """Switches active view to '2. DXF Preview' tab and frames the specified drawing / design."""
+        allowed, lic_msg = self.license_manager.is_operation_allowed("dxf_preview")
+        if not allowed:
+            show_subscription_expired_dialog(self, self.license_manager, lic_msg)
+            self._update_license_indicator()
+            return
+
         self._on_main_tab_changed(1)
         self.dxf_preview_page.load_file(dxf_path, matched_bbox=matched_bbox, matched_code=matched_code)
 
     def _open_standalone_dxf_viewer(self, result: Optional[SearchResult] = None) -> None:
         """Opens DXF in the dedicated DXF Preview tab and focuses matched design."""
+        allowed, lic_msg = self.license_manager.is_operation_allowed("dxf_preview")
+        if not allowed:
+            show_subscription_expired_dialog(self, self.license_manager, lic_msg)
+            self._update_license_indicator()
+            return
+
         target_res = result or getattr(self, "_current_selected_result", None)
         if target_res is None:
             return
@@ -1397,6 +1487,12 @@ class MainWindow(QMainWindow):
         Executes immediate text shortcut search by design code (e.g. 'PD 010')
         without running vector embedding image search.
         """
+        allowed, lic_msg = self.license_manager.is_operation_allowed("code_search")
+        if not allowed:
+            show_subscription_expired_dialog(self, self.license_manager, lic_msg)
+            self._update_license_indicator()
+            return
+
         query = self.code_search_input.text().strip()
         if not query:
             return
@@ -1497,6 +1593,12 @@ class MainWindow(QMainWindow):
 
     def _start_dxf_indexing_flow(self) -> None:
         """Initiates the background DXF CAD library indexing workflow."""
+        allowed, lic_msg = self.license_manager.is_operation_allowed("index_dxf")
+        if not allowed:
+            show_subscription_expired_dialog(self, self.license_manager, lic_msg)
+            self._update_license_indicator()
+            return
+
         dxf_root = self.catalog_index.db.get_setting("dxf_root", "")
         if not dxf_root or not Path(dxf_root).is_dir():
             folder = QFileDialog.getExistingDirectory(self, "Select DXF CAD Library Directory")
@@ -1557,6 +1659,12 @@ class MainWindow(QMainWindow):
 
     def _start_indexing_flow(self) -> None:
         """Initiates the background catalog indexing workflow."""
+        allowed, lic_msg = self.license_manager.is_operation_allowed("index_pdf")
+        if not allowed:
+            show_subscription_expired_dialog(self, self.license_manager, lic_msg)
+            self._update_license_indicator()
+            return
+
         root_dir = self.catalog_index.db.get_setting("catalog_root", "")
         if not root_dir or not Path(root_dir).is_dir():
             # Prompt user to select directory
@@ -1617,8 +1725,113 @@ class MainWindow(QMainWindow):
         if dlg.exec():
             self.update_catalog_stats()
 
+    def _update_license_indicator(self) -> None:
+        """Updates header license button appearance and warning notices."""
+        verdict = self.license_manager.check_license()
+        if verdict.is_valid:
+            days = verdict.days_remaining
+            if days <= 7:
+                self.license_btn.setText(f"⚠️ License ({days}d left)")
+                self.license_btn.setStyleSheet(
+                    "QPushButton { background: #78350F; color: #FCD34D; border: 1px solid #D97706; "
+                    "padding: 5px 12px; font-weight: 700; font-size: 12px; border-radius: 5px; } "
+                    "QPushButton:hover { background: #B45309; color: white; }"
+                )
+            else:
+                self.license_btn.setText(f"🔑 Active ({days}d)")
+                self.license_btn.setStyleSheet(
+                    "QPushButton { background: #064E3B; color: #6EE7B7; border: 1px solid #059669; "
+                    "padding: 5px 12px; font-weight: 600; font-size: 12px; border-radius: 5px; } "
+                    "QPushButton:hover { background: #047857; color: white; }"
+                )
+            if hasattr(self, "nav_tab_dxf_preview"):
+                self.nav_tab_dxf_preview.setEnabled(True)
+                self.nav_tab_dxf_preview.setText("📐 2. DXF Preview")
+                self.nav_tab_dxf_preview.setToolTip(
+                    "Full DXF drawing viewer with vector zoom, layers, and interactive measurement"
+                )
+                self.nav_tab_dxf_preview.setProperty("locked", False)
+                self.nav_tab_dxf_preview.style().polish(self.nav_tab_dxf_preview)
+        else:
+            if verdict.is_expired:
+                self.license_btn.setText("🔒 License Expired")
+            elif verdict.status.value == "SUSPENDED":
+                self.license_btn.setText("⚠️ License Suspended")
+            elif verdict.status.value == "REVOKED":
+                self.license_btn.setText("🔒 License Revoked")
+            else:
+                self.license_btn.setText("🔑 Activate License")
+            self.license_btn.setStyleSheet(
+                "QPushButton { background: #7F1D1D; color: #FCA5A5; border: 1px solid #DC2626; "
+                "padding: 5px 12px; font-weight: 700; font-size: 12px; border-radius: 5px; } "
+                "QPushButton:hover { background: #B91C1C; color: white; }"
+            )
+            if hasattr(self, "nav_tab_dxf_preview"):
+                self.nav_tab_dxf_preview.setEnabled(False)
+                self.nav_tab_dxf_preview.setText("🔒 2. DXF Preview (Locked)")
+                self.nav_tab_dxf_preview.setToolTip(
+                    "DXF Preview is locked: Subscription expired or unlicensed. Click to renew / activate."
+                )
+                self.nav_tab_dxf_preview.setProperty("locked", True)
+                self.nav_tab_dxf_preview.style().polish(self.nav_tab_dxf_preview)
+
+            # Revert to Tab 0 if currently on DXF Preview tab
+            if hasattr(self, "main_stack") and self.main_stack.currentIndex() == 1:
+                self._on_main_tab_changed(0)
+
+    def _open_license_dialog(self) -> None:
+        """Opens the License & Subscription Management dialog."""
+        dlg = LicenseDialog(self.license_manager, self)
+        dlg.license_updated.connect(self._update_license_indicator)
+        dlg.exec()
+        self._update_license_indicator()
+
+    def _check_license_on_startup(self) -> None:
+        """Emits notification if license is expiring soon or expired, and triggers background online heartbeat."""
+        verdict = self.license_manager.check_license()
+        if not verdict.is_valid:
+            if verdict.is_expired:
+                self.status_bar.showMessage("⚠️ Subscription has expired. Matching operations are locked. Click 'License' to renew.")
+            elif verdict.status.value == "SUSPENDED":
+                self.status_bar.showMessage("⚠️ Subscription is suspended by administrator. Click 'License' for details.")
+            elif verdict.status.value == "REVOKED":
+                self.status_bar.showMessage("🔒 Subscription has been revoked. Click 'License' for details.")
+            else:
+                self.status_bar.showMessage("ℹ️ Software is unlicensed. Click 'Activate License' in the top bar to get started.")
+        else:
+            warn_days = self.license_manager.get_expiration_warning_days()
+            if warn_days is not None:
+                self.status_bar.showMessage(
+                    f"⚠️ Subscription Reminder: Your license expires in {verdict.days_remaining} day(s). Click 'License' to renew."
+                )
+
+        # Trigger background online validation heartbeat if a license is installed
+        if self.license_manager.has_local_license():
+            QTimer.singleShot(1500, self._sync_license_with_server)
+
+    def _sync_license_with_server(self) -> None:
+        """Runs a background online heartbeat check with the licensing server."""
+        if not self.license_manager.has_local_license():
+            return
+        if self.license_sync_worker and self.license_sync_worker.isRunning():
+            return
+        self.license_sync_worker = LicenseSyncWorker(self.license_manager, self)
+        self.license_sync_worker.sync_finished.connect(self._on_license_sync_finished)
+        self.license_sync_worker.start()
+
+    def _on_license_sync_finished(self, verdict) -> None:
+        """Called when background server heartbeat check completes."""
+        self._update_license_indicator()
+        if not verdict.is_valid:
+            if verdict.status.value == "SUSPENDED":
+                self.status_bar.showMessage("⚠️ Notice: This subscription has been suspended by the administrator.")
+            elif verdict.status.value == "REVOKED":
+                self.status_bar.showMessage("🔒 Notice: This subscription has been revoked by the administrator.")
+
     def closeEvent(self, event) -> None:
         """Ensures worker threads terminate cleanly upon window closure."""
+        if self.license_sync_worker and self.license_sync_worker.isRunning():
+            self.license_sync_worker.wait(1000)
         if self.search_worker and self.search_worker.isRunning():
             self.search_worker.wait(1000)
         if self.dxf_match_worker and self.dxf_match_worker.isRunning():
