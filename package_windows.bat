@@ -15,8 +15,15 @@ if exist ".venv\Scripts\activate.bat" (
     exit /b 1
 )
 
-echo [2/4] Verifying Build Dependencies...
-python -m pip install --upgrade pip pyinstaller pillow > nul
+echo [2/4] Verifying and Installing Dependencies from requirements.txt...
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+if errorlevel 1 (
+    echo [ERROR] Failed to install project requirements!
+    exit /b 1
+)
+python -m pip install --upgrade pyinstaller pillow
+
 
 echo [3/4] Running PyInstaller Build...
 pyinstaller --clean -y design_matcher.spec

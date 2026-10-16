@@ -12,7 +12,26 @@ from PyInstaller.utils.hooks import (
     collect_data_files,
     collect_submodules,
     collect_dynamic_libs,
+    copy_metadata,
 )
+
+def safe_collect_data(pkg_name):
+    try:
+        return collect_data_files(pkg_name)
+    except Exception:
+        return []
+
+def safe_collect_submodules(pkg_name):
+    try:
+        return collect_submodules(pkg_name)
+    except Exception:
+        return []
+
+def safe_copy_metadata(pkg_name):
+    try:
+        return copy_metadata(pkg_name)
+    except Exception:
+        return []
 
 block_cipher = None
 
@@ -41,18 +60,40 @@ elif is_macos and (project_root / "assets" / "icon.icns").exists():
 elif (project_root / "assets" / "icon.png").exists():
     icon_file = str(project_root / "assets" / "icon.png")
 
-# 2. Collect Data Files
+# 2. Collect Data Files and Package Metadata
 datas = []
 # Bundle assets (icons, brand graphics)
 if (project_root / "assets").exists():
     datas.append((str(project_root / "assets"), "assets"))
 
+# Package metadata required at runtime (HuggingFace transformers, tokenizers, PyTorch)
+for pkg in [
+    "transformers",
+    "huggingface_hub",
+    "safetensors",
+    "tokenizers",
+    "torch",
+    "torchvision",
+    "tqdm",
+    "regex",
+    "requests",
+    "packaging",
+    "filelock",
+    "numpy",
+]:
+    datas += safe_copy_metadata(pkg)
+
 # Package data files
-datas += collect_data_files("pypdfium2")
-datas += collect_data_files("transformers")
-datas += collect_data_files("torch")
-datas += collect_data_files("ezdxf")
-datas += collect_data_files("shapely")
+for pkg in [
+    "pypdfium2",
+    "transformers",
+    "huggingface_hub",
+    "safetensors",
+    "torch",
+    "ezdxf",
+    "shapely",
+]:
+    datas += safe_collect_data(pkg)
 
 # If local model weights are present, bundle them into 'models/dinov2-small'
 local_model_dir = project_root / "models" / "dinov2-small"
@@ -99,6 +140,18 @@ hiddenimports = [
     "torch",
     "torchvision",
     "transformers",
+    "transformers.models",
+    "transformers.models.dinov2",
+    "transformers.models.dinov2.modeling_dinov2",
+    "transformers.models.auto",
+    "transformers.models.auto.modeling_auto",
+    "transformers.models.auto.image_processing_auto",
+    "transformers.models.auto.configuration_auto",
+    "huggingface_hub",
+    "huggingface_hub.utils",
+    "safetensors",
+    "safetensors.torch",
+    "tokenizers",
     # Licensing & Cryptography
     "cryptography",
     "cryptography.hazmat.primitives.asymmetric.ed25519",
@@ -108,13 +161,19 @@ hiddenimports = [
 ]
 
 # Collect submodules
-hiddenimports += collect_submodules("app")
-hiddenimports += collect_submodules("engine")
-hiddenimports += collect_submodules("transformers")
-hiddenimports += collect_submodules("pypdfium2")
-hiddenimports += collect_submodules("faiss")
-hiddenimports += collect_submodules("ezdxf")
-hiddenimports += collect_submodules("shapely")
+for pkg in [
+    "app",
+    "engine",
+    "transformers",
+    "huggingface_hub",
+    "safetensors",
+    "pypdfium2",
+    "faiss",
+    "ezdxf",
+    "shapely",
+]:
+    hiddenimports += safe_collect_submodules(pkg)
+
 
 # 4. Binaries & Dynamic Libraries
 binaries = []

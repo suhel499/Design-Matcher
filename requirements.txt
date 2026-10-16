@@ -24,6 +24,13 @@ faiss-cpu>=1.7.4
 # Deep Learning / Embeddings (CPU)
 torch>=2.1.0
 torchvision>=0.16.0
+transformers>=4.35.0
+huggingface_hub>=0.19.0
+safetensors>=0.4.0
+
+# Licensing, Cryptography & Network
+cryptography>=41.0.0
+httpx>=0.25.0
 
 # Optional ONNX Runtime CPU (if ONNX encoder selected)
 # onnxruntime>=1.16.0
@@ -31,7 +38,9 @@ torchvision>=0.16.0
 # Optional OCR
 pytesseract>=0.3.10
 
-# Testing and Tooling
+# Testing and Packaging Tooling
 pytest>=7.4.0
 pytest-qt>=4.4.0
 tqdm>=4.66.0
+pyinstaller>=6.3.0
+

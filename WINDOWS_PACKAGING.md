@@ -26,12 +26,11 @@ cd C:\Build\DesignMatcher
 python -m venv .venv
 .venv\Scripts\Activate.ps1
 
-# 3. Upgrade pip and install build dependencies
+# 3. Upgrade pip and build tools
 python -m pip install --upgrade pip setuptools wheel pyinstaller
 
-# 4. Install project dependencies
+# 4. Install all project dependencies (including PyTorch, Transformers DINOv2, PySide6, FAISS)
 pip install -r requirements.txt
-pip install cryptography httpx PySide6 ezdxf opencv-python numpy faiss-cpu fitz pillow
 ```
 
 ---

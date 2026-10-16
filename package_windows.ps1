@@ -20,9 +20,12 @@ if (Test-Path ".venv\Scripts\Activate.ps1") {
     Write-Error "Virtual environment '.venv' not found! Create one with: python -m venv .venv"
 }
 
-# 2. Dependency Check
-Write-Host "[2/5] Checking PyInstaller..." -ForegroundColor Green
+# 2. Dependency Check & Installation
+Write-Host "[2/5] Checking and installing dependencies from requirements.txt..." -ForegroundColor Green
+python -m pip install --upgrade pip | Out-Null
+python -m pip install -r requirements.txt
 python -m pip install --upgrade pyinstaller pillow | Out-Null
+
 
 # 3. Clean PyInstaller Build
 Write-Host "[3/5] Compiling application with PyInstaller..." -ForegroundColor Green

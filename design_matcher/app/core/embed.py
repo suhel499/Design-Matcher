@@ -14,9 +14,17 @@ from typing import List, Optional, Union
 
 import numpy as np
 import torch
-from transformers import AutoImageProcessor, AutoModel
+
+try:
+    from transformers import AutoImageProcessor, AutoModel
+    HAS_TRANSFORMERS = True
+except ImportError:
+    AutoImageProcessor = None  # type: ignore
+    AutoModel = None  # type: ignore
+    HAS_TRANSFORMERS = False
 
 from app.core.preprocess import letterbox_image, prepare_mask_for_model
+
 
 logger = logging.getLogger(__name__)
 
@@ -69,6 +77,21 @@ class DINOv2Embedder:
         """Loads model and processor if not already loaded."""
         if self._model is not None:
             return
+
+        global AutoImageProcessor, AutoModel, HAS_TRANSFORMERS
+        if not HAS_TRANSFORMERS or AutoImageProcessor is None or AutoModel is None:
+            try:
+                from transformers import AutoImageProcessor as _AIP, AutoModel as _AM
+                AutoImageProcessor = _AIP
+                AutoModel = _AM
+                HAS_TRANSFORMERS = True
+            except ImportError as exc:
+                logger.error("HuggingFace 'transformers' is not installed: %s", exc)
+                raise RuntimeError(
+                    "HuggingFace 'transformers' library is required for the DINOv2 embedding model but is not installed.\n"
+                    "Please install it using: pip install -r requirements.txt\n"
+                    "Or rebuild the application with package_windows.bat."
+                ) from exc
 
         logger.info("Loading DINOv2 model from '%s' (cache: %s)...", self.model_name_or_path, self.cache_dir)
 
