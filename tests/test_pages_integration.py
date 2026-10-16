@@ -209,26 +209,16 @@ def test_main_window_navigation_and_pages(qtbot, temp_dir):
     win = MainWindow(data_dir=temp_dir)
     qtbot.addWidget(win)
 
-    # All 12 views in main_stack
-    assert win.main_stack.count() == 12
+    # All 10 views in main_stack
+    assert win.main_stack.count() == 10
 
     # Navigate to Settings (page 4)
     win.open_page(4)
     assert win.main_stack.currentIndex() == 4
 
-    # Navigate to Catalogs (page 5)
+    # Navigate to Help (page 5)
     win.open_page(5)
     assert win.main_stack.currentIndex() == 5
-    assert win.nav_tab_catalogs.isChecked()
-
-    # Navigate to History (page 6)
-    win.open_page(6)
-    assert win.main_stack.currentIndex() == 6
-    assert win.nav_tab_history.isChecked()
-
-    # Navigate to Help (page 7)
-    win.open_page(7)
-    assert win.main_stack.currentIndex() == 7
 
     # Navigate back to Matcher (page 0)
     win.open_page(0)
