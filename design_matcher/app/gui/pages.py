@@ -269,6 +269,32 @@ QSlider::handle:horizontal {
     margin-bottom: -5px;
     border-radius: 8px;
 }
+
+QMessageBox {
+    background-color: #1E293B;
+    border: 1px solid #334155;
+}
+
+QMessageBox QLabel {
+    color: #F8FAFC;
+    font-size: 13px;
+    background: transparent;
+}
+
+QMessageBox QPushButton {
+    background-color: #2563EB;
+    color: #FFFFFF;
+    border: 1px solid #3B82F6;
+    border-radius: 6px;
+    padding: 6px 18px;
+    font-size: 12px;
+    font-weight: 600;
+    min-width: 65px;
+}
+
+QMessageBox QPushButton:hover {
+    background-color: #1D4ED8;
+}
 """
     else:
         return """
@@ -477,6 +503,32 @@ QSlider::handle:horizontal {
     margin-bottom: -5px;
     border-radius: 8px;
 }
+
+QMessageBox {
+    background-color: #FFFFFF;
+    border: 1px solid #CBD5E1;
+}
+
+QMessageBox QLabel {
+    color: #0F172A;
+    font-size: 13px;
+    background: transparent;
+}
+
+QMessageBox QPushButton {
+    background-color: #2563EB;
+    color: #FFFFFF;
+    border: 1px solid #2563EB;
+    border-radius: 6px;
+    padding: 6px 18px;
+    font-size: 12px;
+    font-weight: 600;
+    min-width: 65px;
+}
+
+QMessageBox QPushButton:hover {
+    background-color: #1D4ED8;
+}
 """
 
 PAGE_STYLESHEET = get_page_stylesheet(True)
@@ -600,6 +652,7 @@ class EulaPage(QWidget):
 
         # Acceptance controls
         self.bottom_box = QFrame(self)
+        self.bottom_box.setObjectName("eulaBottomBox")
         bottom_layout = QHBoxLayout(self.bottom_box)
 
         self.accept_check = QCheckBox("I have read and agree to the End User License Agreement and Privacy Notice")
@@ -630,7 +683,7 @@ class EulaPage(QWidget):
         self.title.setStyleSheet(f"font-size: 24px; font-weight: 800; color: {title_col}; background: transparent;")
         self.subtitle.setStyleSheet(f"font-size: 13px; color: {sub_col}; background: transparent;")
 
-        self.bottom_box.setStyleSheet(f"background: {bg_card}; border: 1px solid {border_card}; border-radius: 8px; padding: 16px;")
+        self.bottom_box.setStyleSheet(f"QFrame#eulaBottomBox {{ background: {bg_card}; border: 1px solid {border_card}; border-radius: 8px; padding: 16px; }}")
         self.accept_check.setStyleSheet(f"font-size: 13px; font-weight: 600; color: {text_col};")
 
         btn_bg = "#1E293B" if is_dark else "#F1F5F9"
@@ -642,9 +695,45 @@ class EulaPage(QWidget):
         )
 
         self.btn_continue.setStyleSheet(
-            "QPushButton:disabled { background: #334155; color: #64748B; border: 1px solid #475569; }"
-            if is_dark else
-            "QPushButton:disabled { background: #E2E8F0; color: #94A3B8; border: 1px solid #CBD5E1; }"
+            """
+            QPushButton {
+                background-color: #2563EB;
+                color: #FFFFFF;
+                font-weight: 700;
+                font-size: 13px;
+                border: 1px solid #1D4ED8;
+                border-radius: 6px;
+                padding: 10px 24px;
+            }
+            QPushButton:hover {
+                background-color: #1D4ED8;
+                color: #FFFFFF;
+            }
+            QPushButton:disabled {
+                background-color: #334155;
+                color: #64748B;
+                border: 1px solid #475569;
+            }
+            """ if is_dark else """
+            QPushButton {
+                background-color: #2563EB;
+                color: #FFFFFF;
+                font-weight: 700;
+                font-size: 13px;
+                border: 1px solid #1D4ED8;
+                border-radius: 6px;
+                padding: 10px 24px;
+            }
+            QPushButton:hover {
+                background-color: #1D4ED8;
+                color: #FFFFFF;
+            }
+            QPushButton:disabled {
+                background-color: #E2E8F0;
+                color: #94A3B8;
+                border: 1px solid #CBD5E1;
+            }
+            """
         )
 
         self.eula_text.setHtml(f"""
@@ -1643,6 +1732,7 @@ class UpdatesPage(QWidget):
 
         # Version Banner
         self.banner = QFrame()
+        self.banner.setObjectName("updateBanner")
         b_layout = QHBoxLayout(self.banner)
 
         vbox = QVBoxLayout()
@@ -1657,10 +1747,10 @@ class UpdatesPage(QWidget):
 
         b_layout.addStretch()
 
-        btn_check = QPushButton("Check for Updates Now")
-        btn_check.setProperty("class", "primaryBtn")
-        btn_check.clicked.connect(self._check_updates)
-        b_layout.addWidget(btn_check)
+        self.btn_check = QPushButton("Check for Updates Now")
+        self.btn_check.setProperty("class", "primaryBtn")
+        self.btn_check.clicked.connect(self._check_updates)
+        b_layout.addWidget(self.btn_check)
 
         body_layout.addWidget(self.banner)
 
@@ -1682,7 +1772,29 @@ class UpdatesPage(QWidget):
 
         bg_card = "#1E293B" if is_dark else "#FFFFFF"
         border_card = "#334155" if is_dark else "#CBD5E1"
-        self.banner.setStyleSheet(f"background: {bg_card}; border: 1px solid {border_card}; border-radius: 10px; padding: 20px;")
+        self.banner.setStyleSheet(f"QFrame#updateBanner {{ background: {bg_card}; border: 1px solid {border_card}; border-radius: 10px; padding: 20px; }}")
+
+        self.btn_check.setStyleSheet(
+            """
+            QPushButton {
+                background-color: #2563EB;
+                color: #FFFFFF;
+                font-weight: 700;
+                font-size: 13px;
+                border: 1px solid #1D4ED8;
+                border-radius: 6px;
+                padding: 10px 22px;
+            }
+            QPushButton:hover {
+                background-color: #1D4ED8;
+                color: #FFFFFF;
+            }
+            QPushButton:pressed {
+                background-color: #1E40AF;
+                color: #FFFFFF;
+            }
+            """
+        )
 
         head_color = "#38BDF8" if is_dark else "#0284C7"
         body_color = "#E2E8F0" if is_dark else "#1E293B"
@@ -1711,7 +1823,47 @@ class UpdatesPage(QWidget):
         self.lbl_update_status.setText("Status: You are running the latest version (v1.0.0). No updates available.")
         self.lbl_update_status.setStyleSheet("color: #10B981; font-weight: 600;")
         if show_alert:
-            QMessageBox.information(self, "Up to Date", "Design Matcher is up to date!")
+            box = QMessageBox(self)
+            box.setWindowTitle("Up to Date")
+            box.setIcon(QMessageBox.Icon.Information)
+            box.setText("Design Matcher is up to date!")
+            box.setInformativeText("You are running the latest commercial release (v1.0.0).")
+            box.setStandardButtons(QMessageBox.StandardButton.Ok)
+
+            bg_box = "#1E293B" if self.is_dark else "#FFFFFF"
+            fg_box = "#F8FAFC" if self.is_dark else "#0F172A"
+            fg_sub = "#94A3B8" if self.is_dark else "#475569"
+            border_box = "#334155" if self.is_dark else "#CBD5E1"
+
+            box.setStyleSheet(f"""
+                QMessageBox {{
+                    background-color: {bg_box};
+                    border: 1px solid {border_box};
+                }}
+                QLabel {{
+                    color: {fg_box};
+                    font-size: 13px;
+                    background: transparent;
+                }}
+                QLabel#qt_msgbox_informativelabel {{
+                    color: {fg_sub};
+                    font-size: 12px;
+                }}
+                QPushButton {{
+                    background-color: #2563EB;
+                    color: #FFFFFF;
+                    font-weight: 600;
+                    font-size: 12px;
+                    border: 1px solid #1D4ED8;
+                    border-radius: 6px;
+                    padding: 6px 20px;
+                    min-width: 65px;
+                }}
+                QPushButton:hover {{
+                    background-color: #1D4ED8;
+                }}
+            """)
+            box.exec()
 
 
 # ==============================================================================
@@ -2209,50 +2361,9 @@ class ContactPage(QWidget):
 
         body_layout.addWidget(self.comp_box)
 
-        # 3. Anonymized Diagnostic Exporter Card
-        self.anon_box = QGroupBox("Zero-Personal-Data Diagnostic Log Exporter")
-        anon_layout = QVBoxLayout(self.anon_box)
-        anon_layout.setContentsMargins(18, 22, 18, 16)
-        anon_layout.setSpacing(10)
-
-        self.anon_desc = QLabel(
-            "Our diagnostic exporter automatically strips and redacts all usernames, file paths, emails, and license keys. "
-            "You can inspect the live sanitized output below before sharing it."
-        )
-        self.anon_desc.setWordWrap(True)
-        anon_layout.addWidget(self.anon_desc)
-
-        btn_gen = QPushButton("🛡️ Generate Anonymized Diagnostic Report")
-        btn_gen.setProperty("class", "primaryBtn")
-        btn_gen.clicked.connect(self._generate_sanitized_log)
-        anon_layout.addWidget(btn_gen, 0, Qt.AlignmentFlag.AlignLeft)
-
+        # Headless text edit for log sanitizing functions/backward compatibility
         self.txt_log_preview = QTextEdit()
-        self.txt_log_preview.setMaximumHeight(140)
-        self.txt_log_preview.setReadOnly(True)
-        self.txt_log_preview.setPlaceholderText("Click 'Generate Anonymized Diagnostic Report' to review the sanitized output...")
-        anon_layout.addWidget(self.txt_log_preview)
 
-        exp_btns = QHBoxLayout()
-        btn_save_log = QPushButton("💾 Save Anonymized Log File...")
-        btn_save_log.setProperty("class", "secondaryBtn")
-        btn_save_log.clicked.connect(self._save_sanitized_log)
-        exp_btns.addWidget(btn_save_log)
-
-        btn_copy = QPushButton("Copy to Clipboard")
-        btn_copy.setProperty("class", "secondaryBtn")
-        btn_copy.clicked.connect(self._copy_log)
-        exp_btns.addWidget(btn_copy)
-
-        btn_mail_diag = QPushButton("✉️ Send with Diagnostics via Email")
-        btn_mail_diag.setProperty("class", "secondaryBtn")
-        btn_mail_diag.clicked.connect(self._email_with_diagnostics)
-        exp_btns.addWidget(btn_mail_diag)
-
-        exp_btns.addStretch()
-        anon_layout.addLayout(exp_btns)
-
-        body_layout.addWidget(self.anon_box)
         body_layout.addStretch()
 
         self.scroll.setWidget(self.body)

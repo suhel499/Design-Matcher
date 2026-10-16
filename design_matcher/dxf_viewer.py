@@ -1713,7 +1713,12 @@ class DxfFolderExplorerWidget(QWidget):
         if initial_folder is not None and Path(initial_folder).is_dir():
             self.current_folder = Path(initial_folder).resolve()
         else:
-            self.current_folder = Path.cwd().resolve()
+            settings = QSettings("DesignMatcher", "DxfViewer")
+            saved_folder = settings.value("last_dxf_folder", "", type=str)
+            if saved_folder and Path(saved_folder).is_dir():
+                self.current_folder = Path(saved_folder).resolve()
+            else:
+                self.current_folder = Path.cwd().resolve()
 
         self._all_dxf_files: List[Path] = []
         self._setup_ui()
@@ -1751,34 +1756,13 @@ class DxfFolderExplorerWidget(QWidget):
         self.btn_browse.clicked.connect(self._browse_folder_dialog)
         layout.addWidget(self.btn_browse)
 
-        # 3. Quick Shortcuts Row
-        shortcuts_layout = QHBoxLayout()
-        shortcuts_layout.setSpacing(4)
-
-        self.btn_proj = QPushButton("🏠 Project Root", self)
-        self.btn_proj.setStyleSheet(
-            "QPushButton { background: #1E293B; color: #E2E8F0; border: 1px solid #334155; border-radius: 4px; padding: 3px 6px; font-size: 10px; font-weight: 600; } "
-            "QPushButton:hover { background: #334155; }"
-        )
-        self.btn_proj.clicked.connect(lambda: self.set_folder(Path.cwd()))
-        shortcuts_layout.addWidget(self.btn_proj)
-
-        self.btn_cat = QPushButton("📚 Catalogs", self)
-        self.btn_cat.setStyleSheet(
-            "QPushButton { background: #1E293B; color: #E2E8F0; border: 1px solid #334155; border-radius: 4px; padding: 3px 6px; font-size: 10px; font-weight: 600; } "
-            "QPushButton:hover { background: #334155; }"
-        )
-        self.btn_cat.clicked.connect(self._jump_to_catalogs)
-        shortcuts_layout.addWidget(self.btn_cat)
-        layout.addLayout(shortcuts_layout)
-
-        # 4. Current Path Label
+        # 3. Current Path Label
         self.path_label = QLabel(self)
         self.path_label.setStyleSheet("color: #64748B; font-size: 10px; padding: 2px 0px;")
         self.path_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         layout.addWidget(self.path_label)
 
-        # 5. Search / Filter Input
+        # 4. Search / Filter Input
         self.search_input = QLineEdit(self)
         self.search_input.setPlaceholderText("🔍 Filter DXF files...")
         self.search_input.setClearButtonEnabled(True)
@@ -1789,7 +1773,7 @@ class DxfFolderExplorerWidget(QWidget):
         self.search_input.textChanged.connect(self._filter_files)
         layout.addWidget(self.search_input)
 
-        # 6. Options Row: Recursive Subfolders & Count Label
+        # 5. Options Row: Recursive Subfolders & Count Label
         opts_row = QHBoxLayout()
         self.chk_recursive = QCheckBox("Include Subfolders", self)
         self.chk_recursive.setChecked(True)
@@ -1803,7 +1787,7 @@ class DxfFolderExplorerWidget(QWidget):
         opts_row.addWidget(self.count_label)
         layout.addLayout(opts_row)
 
-        # 7. DXF Files List
+        # 6. DXF Files List
         self.file_list = QListWidget(self)
         self.file_list.setStyleSheet(
             "QListWidget { background: #0F172A; color: #F8FAFC; border: 1px solid #334155; border-radius: 6px; font-size: 11px; } "
@@ -1815,16 +1799,9 @@ class DxfFolderExplorerWidget(QWidget):
         self.file_list.currentItemChanged.connect(self._on_current_item_changed)
         layout.addWidget(self.file_list, 1)
 
-    def _jump_to_catalogs(self) -> None:
-        cat_dir = Path.cwd() / "design_matcher" / "sample_data" / "catalogs"
-        if not cat_dir.is_dir():
-            cat_dir = Path.cwd() / "sample_data" / "catalogs"
-        if not cat_dir.is_dir():
-            cat_dir = Path.cwd()
-        self.set_folder(cat_dir)
-
     def _browse_folder_dialog(self) -> None:
-        chosen = QFileDialog.getExistingDirectory(self, "Select Folder Containing DXF CAD Files", str(self.current_folder))
+        start_dir = str(self.current_folder) if self.current_folder.is_dir() else str(Path.home())
+        chosen = QFileDialog.getExistingDirectory(self, "Select Folder Containing DXF CAD Files", start_dir)
         if chosen and Path(chosen).is_dir():
             self.set_folder(Path(chosen))
 
@@ -1832,6 +1809,8 @@ class DxfFolderExplorerWidget(QWidget):
         p = Path(folder).resolve()
         if p.is_dir():
             self.current_folder = p
+            # Persist selected folder across app sessions
+            QSettings("DesignMatcher", "DxfViewer").setValue("last_dxf_folder", str(p))
             self.refresh()
 
     def refresh(self) -> None:
@@ -1927,12 +1906,6 @@ class DxfFolderExplorerWidget(QWidget):
         self.setStyleSheet(f"background-color: {bg_main};")
         self.title_lbl.setStyleSheet(f"font-size: 11px; font-weight: 700; color: {text_muted}; letter-spacing: 0.5px;")
 
-        btn_sc_style = (
-            f"QPushButton {{ background: {btn_bg}; color: {btn_text}; border: 1px solid {border_col}; border-radius: 4px; padding: 3px 6px; font-size: 10px; font-weight: 600; }} "
-            f"QPushButton:hover {{ background: {btn_hover}; }}"
-        )
-        self.btn_proj.setStyleSheet(btn_sc_style)
-        self.btn_cat.setStyleSheet(btn_sc_style)
 
         self.btn_refresh.setStyleSheet(
             f"QToolButton {{ background: {btn_bg}; color: {btn_text}; border: 1px solid {border_col}; border-radius: 4px; padding: 2px 5px; }} "

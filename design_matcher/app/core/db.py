@@ -110,6 +110,8 @@ class CatalogDatabase:
 
         if use_mysql is not None:
             self.use_mysql = use_mysql
+        elif "PYTEST_CURRENT_TEST" in os.environ and "USE_MYSQL" not in os.environ:
+            self.use_mysql = False
         else:
             self.use_mysql = os.environ.get("USE_MYSQL", "true").lower() in ("true", "1", "yes")
 
