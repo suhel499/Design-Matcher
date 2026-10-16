@@ -1501,3 +1501,42 @@
 2026-10-15 13:12:19,647 [INFO] dxf_ingest: Extracted 2 designs (0 labels found) from DXF in 0.00 s (skipped 0 entities).
 2026-10-15 13:12:20,785 [INFO] dxf_ingest: Extracted 1 designs (1 labels found) from DXF in 0.00 s (skipped 0 entities).
 2026-10-15 13:12:20,791 [INFO] dxf_ingest: Extracted 2 designs (0 labels found) from DXF in 0.00 s (skipped 0 entities).
+2026-10-16 13:14:50,242 [INFO] dxf_ingest: Extracted 2 designs (0 labels found) from DXF in 0.00 s (skipped 0 entities).
+2026-10-16 13:14:50,393 [INFO] dxf_ingest: Extracted 2 designs (0 labels found) from DXF in 0.00 s (skipped 0 entities).
+2026-10-16 13:14:50,406 [INFO] dxf_ingest: Extracted 2 designs (0 labels found) from DXF in 0.00 s (skipped 0 entities).
+2026-10-16 13:14:50,535 [INFO] dxf_ingest: Extracted 2 designs (0 labels found) from DXF in 0.00 s (skipped 0 entities).
+2026-10-16 13:14:50,871 [WARNING] dxf_ingest: ezdxf.readfile failed on corrupt.dxf (File '/private/var/folders/2j/jps01wd95lj0wcwhhxx531b00000gn/T/pytest-of-suhel/pytest-214/test_viewer_widget_corrupt_fil0/corrupt.dxf' is not a DXF file.). Attempting ezdxf.recover...
+2026-10-16 13:14:50,993 [INFO] dxf_ingest: Extracted 2 designs (0 labels found) from DXF in 0.00 s (skipped 0 entities).
+2026-10-16 13:14:51,061 [INFO] dxf_ingest: Extracted 2 designs (0 labels found) from DXF in 0.00 s (skipped 0 entities).
+2026-10-16 13:14:51,284 [INFO] dxf_ingest: Extracted 2 designs (0 labels found) from DXF in 0.00 s (skipped 0 entities).
+2026-10-16 13:14:51,350 [INFO] dxf_ingest: Extracted 2 designs (0 labels found) from DXF in 0.00 s (skipped 0 entities).
+2026-10-16 13:14:51,379 [INFO] dxf_ingest: Extracted 2 designs (0 labels found) from DXF in 0.00 s (skipped 0 entities).
+2026-10-16 13:14:52,767 [INFO] dxf_ingest: Extracted 2 designs (0 labels found) from DXF in 0.00 s (skipped 0 entities).
+2026-10-16 13:14:54,532 [INFO] dxf_ingest: Extracted 1 designs (1 labels found) from DXF in 0.00 s (skipped 0 entities).
+2026-10-16 13:14:54,539 [INFO] dxf_ingest: Extracted 2 designs (0 labels found) from DXF in 0.00 s (skipped 0 entities).
+2026-10-16 13:30:38,990 [INFO] dxf_ingest: Extracted 2 designs (0 labels found) from DXF in 0.00 s (skipped 0 entities).
+2026-10-16 13:30:39,145 [INFO] dxf_ingest: Extracted 2 designs (0 labels found) from DXF in 0.00 s (skipped 0 entities).
+2026-10-16 13:30:39,159 [INFO] dxf_ingest: Extracted 2 designs (0 labels found) from DXF in 0.00 s (skipped 0 entities).
+2026-10-16 13:30:39,340 [INFO] dxf_ingest: Extracted 2 designs (0 labels found) from DXF in 0.00 s (skipped 0 entities).
+2026-10-16 13:30:39,804 [WARNING] dxf_ingest: ezdxf.readfile failed on corrupt.dxf (File '/private/var/folders/2j/jps01wd95lj0wcwhhxx531b00000gn/T/pytest-of-suhel/pytest-215/test_viewer_widget_corrupt_fil0/corrupt.dxf' is not a DXF file.). Attempting ezdxf.recover...
+2026-10-16 13:30:39,917 [INFO] dxf_ingest: Extracted 2 designs (0 labels found) from DXF in 0.00 s (skipped 0 entities).
+2026-10-16 13:30:39,985 [INFO] dxf_ingest: Extracted 2 designs (0 labels found) from DXF in 0.00 s (skipped 0 entities).
+2026-10-16 13:30:40,210 [INFO] dxf_ingest: Extracted 2 designs (0 labels found) from DXF in 0.00 s (skipped 0 entities).
+2026-10-16 13:30:40,286 [INFO] dxf_ingest: Extracted 2 designs (0 labels found) from DXF in 0.00 s (skipped 0 entities).
+2026-10-16 13:30:40,319 [INFO] dxf_ingest: Extracted 2 designs (0 labels found) from DXF in 0.00 s (skipped 0 entities).
+2026-10-16 13:30:42,119 [INFO] dxf_ingest: Extracted 2 designs (0 labels found) from DXF in 0.00 s (skipped 0 entities).
+2026-10-16 13:30:43,944 [INFO] dxf_ingest: Extracted 1 designs (1 labels found) from DXF in 0.00 s (skipped 0 entities).
+2026-10-16 13:30:43,950 [INFO] dxf_ingest: Extracted 2 designs (0 labels found) from DXF in 0.00 s (skipped 0 entities).
+2026-10-16 13:33:24,883 [INFO] dxf_ingest: Extracted 2 designs (0 labels found) from DXF in 0.00 s (skipped 0 entities).
+2026-10-16 13:33:25,050 [INFO] dxf_ingest: Extracted 2 designs (0 labels found) from DXF in 0.00 s (skipped 0 entities).
+2026-10-16 13:33:25,063 [INFO] dxf_ingest: Extracted 2 designs (0 labels found) from DXF in 0.00 s (skipped 0 entities).
+2026-10-16 13:33:25,184 [INFO] dxf_ingest: Extracted 2 designs (0 labels found) from DXF in 0.00 s (skipped 0 entities).
+2026-10-16 13:33:25,512 [WARNING] dxf_ingest: ezdxf.readfile failed on corrupt.dxf (File '/private/var/folders/2j/jps01wd95lj0wcwhhxx531b00000gn/T/pytest-of-suhel/pytest-216/test_viewer_widget_corrupt_fil0/corrupt.dxf' is not a DXF file.). Attempting ezdxf.recover...
+2026-10-16 13:33:25,628 [INFO] dxf_ingest: Extracted 2 designs (0 labels found) from DXF in 0.00 s (skipped 0 entities).
+2026-10-16 13:33:25,686 [INFO] dxf_ingest: Extracted 2 designs (0 labels found) from DXF in 0.00 s (skipped 0 entities).
+2026-10-16 13:33:25,904 [INFO] dxf_ingest: Extracted 2 designs (0 labels found) from DXF in 0.00 s (skipped 0 entities).
+2026-10-16 13:33:25,972 [INFO] dxf_ingest: Extracted 2 designs (0 labels found) from DXF in 0.00 s (skipped 0 entities).
+2026-10-16 13:33:26,002 [INFO] dxf_ingest: Extracted 2 designs (0 labels found) from DXF in 0.00 s (skipped 0 entities).
+2026-10-16 13:33:27,700 [INFO] dxf_ingest: Extracted 2 designs (0 labels found) from DXF in 0.00 s (skipped 0 entities).
+2026-10-16 13:33:29,571 [INFO] dxf_ingest: Extracted 1 designs (1 labels found) from DXF in 0.00 s (skipped 0 entities).
+2026-10-16 13:33:29,578 [INFO] dxf_ingest: Extracted 2 designs (0 labels found) from DXF in 0.00 s (skipped 0 entities).
