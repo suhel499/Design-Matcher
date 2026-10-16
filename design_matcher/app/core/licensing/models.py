@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Dict, List, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class PlanType(str, Enum):
@@ -39,7 +39,30 @@ class LicensePayload(BaseModel):
     status: str = LicenseStatus.ACTIVE.value
     hardware_binding: Optional[str] = None  # Bound machine fingerprint
     features: List[str] = Field(default_factory=lambda: ["dxf_matching", "pdf_catalog", "code_search", "dxf_export"])
-    nonce: str
+    nonce: str = ""
+
+    @model_validator(mode="before")
+    @classmethod
+    def remap_abbreviated_keys(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            mapping = {
+                "lic_id": "license_id",
+                "lic_key": "license_key",
+                "cust_id": "customer_id",
+                "cust_name": "customer_name",
+                "prod": "product_id",
+                "plan": "plan_type",
+                "seats": "max_activations",
+                "hwid": "hardware_binding",
+            }
+            remapped = dict(data)
+            for short_k, full_k in mapping.items():
+                if short_k in remapped and full_k not in remapped:
+                    remapped[full_k] = remapped[short_k]
+            if "nonce" not in remapped or not remapped["nonce"]:
+                remapped["nonce"] = ""
+            return remapped
+        return data
 
 
 class SignedLicenseFile(BaseModel):
@@ -48,6 +71,17 @@ class SignedLicenseFile(BaseModel):
     algorithm: str = "Ed25519"
     payload: Dict[str, Any]
     signature: str  # Base64 string
+
+    @model_validator(mode="before")
+    @classmethod
+    def remap_format_key(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            remapped = dict(data)
+            if "version" not in remapped:
+                remapped["version"] = 1
+            return remapped
+        return data
+
 
 
 class OfflineActivationRequest(BaseModel):
