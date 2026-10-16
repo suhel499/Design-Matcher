@@ -32,7 +32,7 @@ from app.core.licensing.public_key import get_verification_public_key
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_SERVER_URL = "http://127.0.0.1:8000"
+DEFAULT_SERVER_URL = "http://103.118.16.199:8000"
 DEFAULT_GRACE_PERIOD_DAYS = 7
 EXPECTED_PRODUCT_ID = "design-matcher"
 
