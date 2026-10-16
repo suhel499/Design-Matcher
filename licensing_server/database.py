@@ -14,15 +14,18 @@ from licensing_server.config import settings
 
 logger = logging.getLogger(__name__)
 
-# Configure connect_args based on database type
-connect_args = {}
+engine_args = {}
 if settings.DATABASE_URL.startswith("sqlite"):
-    connect_args["check_same_thread"] = False
+    engine_args["connect_args"] = {"check_same_thread": False}
+elif "mysql" in settings.DATABASE_URL:
+    engine_args["pool_pre_ping"] = True
+    engine_args["pool_recycle"] = 3600
+    engine_args["pool_size"] = 10
+    engine_args["max_overflow"] = 20
 
 engine = create_engine(
     settings.DATABASE_URL,
-    connect_args=connect_args,
-    pool_pre_ping=True,
+    **engine_args,
     echo=settings.DEBUG,
 )
 

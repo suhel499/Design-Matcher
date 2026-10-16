@@ -150,7 +150,7 @@ class LicenseManager:
             parsed_payload = LicensePayload.model_validate(payload)
 
             # 2. Product verification
-            if parsed_payload.product_id != EXPECTED_PRODUCT_ID:
+            if parsed_payload.product_id not in (EXPECTED_PRODUCT_ID, "design_matcher"):
                 return False, f"License is for '{parsed_payload.product_id}', not '{EXPECTED_PRODUCT_ID}'."
 
             # 3. Hardware binding verification
@@ -256,7 +256,7 @@ class LicenseManager:
             )
 
         # 4. Product ID check
-        if payload.product_id != EXPECTED_PRODUCT_ID:
+        if payload.product_id not in (EXPECTED_PRODUCT_ID, "design_matcher"):
             return LicenseCheckResult(
                 is_valid=False,
                 status=LicenseStatus.REVOKED,

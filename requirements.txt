@@ -28,9 +28,10 @@ transformers>=4.35.0
 huggingface_hub>=0.19.0
 safetensors>=0.4.0
 
-# Licensing, Cryptography & Network
+# Licensing, Cryptography, Database & Network
 cryptography>=41.0.0
 httpx>=0.25.0
+pymysql>=1.1.0
 
 # Optional ONNX Runtime CPU (if ONNX encoder selected)
 # onnxruntime>=1.16.0

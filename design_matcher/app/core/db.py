@@ -1,37 +1,250 @@
 """
 Database layer for Design Matcher.
-Manages metadata storage in SQLite, mapping between vector IDs in FAISS and tile catalog details.
+Manages metadata storage in MySQL (production/normalized) and SQLite (fallback/testing),
+mapping between vector IDs in FAISS and tile catalog details.
 """
 
 from __future__ import annotations
 
 import json
 import logging
+import os
+import re
 import sqlite3
 from pathlib import Path
 from typing import Any, Optional, overload
 
 logger = logging.getLogger(__name__)
 
+try:
+    import pymysql
+    from pymysql.cursors import DictCursor
+    PYMYSQL_AVAILABLE = True
+except ImportError:
+    PYMYSQL_AVAILABLE = False
+
+
+class RowDict(dict):
+    """
+    Dictionary subclass providing both key-based and 0-indexed lookup,
+    ensuring 100% interoperability between MySQL query results and sqlite3.Row.
+    """
+    def __getitem__(self, item: Any) -> Any:
+        if isinstance(item, int):
+            return list(self.values())[item]
+        return super().__getitem__(item)
+
+
+if PYMYSQL_AVAILABLE:
+    class RowDictCursor(DictCursor):
+        dict_type = RowDict
+else:
+    RowDictCursor = None  # type: ignore
+
+
+class MySQLConnectionWrapper:
+    """Thread-safe context manager wrapping PyMySQL connections."""
+    def __init__(self, conn: Any) -> None:
+        self._conn = conn
+
+    def __enter__(self) -> MySQLConnectionWrapper:
+        return self
+
+    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+        try:
+            if exc_type:
+                self._conn.rollback()
+            else:
+                self._conn.commit()
+        finally:
+            self._conn.close()
+
+    @staticmethod
+    def _translate_query(sql: str) -> str:
+        # Convert ? placeholders to %s for PyMySQL parameter binding
+        translated = sql.replace("?", "%s")
+        # Translate SQLite upsert for indexed_files
+        if "ON CONFLICT(pdf_path) DO UPDATE SET" in translated:
+            translated = re.sub(
+                r"ON CONFLICT\(pdf_path\) DO UPDATE SET.*",
+                "ON DUPLICATE KEY UPDATE folder = VALUES(folder), file_hash = VALUES(file_hash), file_size = VALUES(file_size), last_modified = VALUES(last_modified), page_count = VALUES(page_count), tile_count = VALUES(tile_count), indexed_at = CURRENT_TIMESTAMP;",
+                translated,
+                flags=re.DOTALL,
+            )
+        # Translate SQLite upsert for settings
+        elif "ON CONFLICT(key) DO UPDATE SET" in translated or "ON CONFLICT(`key`)" in translated:
+            translated = "INSERT INTO settings (`key`, `value`) VALUES (%s, %s) ON DUPLICATE KEY UPDATE `value` = VALUES(`value`);"
+        # Escape MySQL reserved keyword `key`
+        translated = re.sub(r"\bsettings\s*\(\s*key\s*,", "settings (`key`,", translated)
+        translated = re.sub(r"\bWHERE\s+key\s*=", "WHERE `key` =", translated)
+        translated = re.sub(r"\bSELECT\s+value\s+FROM\s+settings", "SELECT `value` FROM settings", translated)
+        return translated
+
+    def execute(self, sql: str, params: Any = None) -> Any:
+        cur = self._conn.cursor()
+        t_sql = self._translate_query(sql)
+        cur.execute(t_sql, params or ())
+        return cur
+
+    def cursor(self) -> Any:
+        cur = self._conn.cursor()
+        orig_execute = cur.execute
+        def wrapped_execute(sql: str, params: Any = None) -> Any:
+            return orig_execute(self._translate_query(sql), params or ())
+        cur.execute = wrapped_execute
+        return cur
+
+    def commit(self) -> None:
+        self._conn.commit()
+
+    def rollback(self) -> None:
+        self._conn.rollback()
+
 
 class CatalogDatabase:
-    """Manages SQLite metadata storage for indexed catalog PDFs, pages, and tiles."""
+    """Manages metadata storage (MySQL primary, SQLite fallback) for indexed catalog PDFs, pages, and tiles."""
 
-    def __init__(self, db_path: Path | str) -> None:
+    def __init__(self, db_path: Path | str, use_mysql: Optional[bool] = None) -> None:
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
+
+        if use_mysql is not None:
+            self.use_mysql = use_mysql
+        else:
+            self.use_mysql = os.environ.get("USE_MYSQL", "true").lower() in ("true", "1", "yes")
+
+        self.mysql_config = {
+            "host": os.environ.get("MYSQL_HOST", "127.0.0.1"),
+            "port": int(os.environ.get("MYSQL_PORT", "3306")),
+            "user": os.environ.get("MYSQL_USER", "root"),
+            "password": os.environ.get("MYSQL_PASSWORD", "root@123"),
+            "database": os.environ.get("MYSQL_DATABASE", "design_matcher_catalog"),
+            "charset": "utf8mb4",
+            "autocommit": False,
+        }
+
+        self.is_mysql = False
+        if self.use_mysql and PYMYSQL_AVAILABLE:
+            try:
+                conn = self._create_raw_mysql_connection()
+                conn.close()
+                self.is_mysql = True
+                logger.info("CatalogDatabase initialized with MySQL (%s:%d/%s)",
+                            self.mysql_config["host"], self.mysql_config["port"], self.mysql_config["database"])
+            except Exception as exc:
+                logger.warning("Could not connect to MySQL (%s). Falling back to SQLite: %s", exc, self.db_path)
+                self.is_mysql = False
+
         self.init_db()
 
-    def _get_connection(self) -> sqlite3.Connection:
-        """Returns a connection configured with row factory and foreign keys."""
-        conn = sqlite3.connect(str(self.db_path), check_same_thread=False)
-        conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA foreign_keys = ON;")
-        conn.execute("PRAGMA journal_mode = WAL;")
-        return conn
+    def _create_raw_mysql_connection(self) -> Any:
+        return pymysql.connect(
+            host=self.mysql_config["host"],
+            port=self.mysql_config["port"],
+            user=self.mysql_config["user"],
+            password=self.mysql_config["password"],
+            database=self.mysql_config["database"],
+            charset=self.mysql_config["charset"],
+            cursorclass=RowDictCursor,
+            autocommit=self.mysql_config["autocommit"],
+        )
+
+    def _get_connection(self) -> Any:
+        """Returns a connection configured with row factory/dict cursor and foreign keys."""
+        if self.is_mysql:
+            conn = self._create_raw_mysql_connection()
+            return MySQLConnectionWrapper(conn)
+        else:
+            conn = sqlite3.connect(str(self.db_path), check_same_thread=False)
+            conn.row_factory = sqlite3.Row
+            conn.execute("PRAGMA foreign_keys = ON;")
+            conn.execute("PRAGMA journal_mode = WAL;")
+            return conn
 
     def init_db(self) -> None:
         """Initializes tables and indices if they do not already exist."""
+        if self.is_mysql:
+            self._init_mysql_db()
+        else:
+            self._init_sqlite_db()
+
+    def _init_mysql_db(self) -> None:
+        """Creates MySQL tables with normalized schemas, InnoDB engine, and utf8mb4 charset."""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS indexed_files (
+                    pdf_path VARCHAR(700) PRIMARY KEY,
+                    folder VARCHAR(500) NOT NULL,
+                    file_hash VARCHAR(128) NOT NULL,
+                    file_size BIGINT NOT NULL,
+                    last_modified DOUBLE NOT NULL,
+                    page_count INT NOT NULL DEFAULT 0,
+                    tile_count INT NOT NULL DEFAULT 0,
+                    indexed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    INDEX idx_indexed_hash (file_hash)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+                """
+            )
+
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS tiles (
+                    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                    pdf_path VARCHAR(700) NOT NULL,
+                    folder VARCHAR(500) NOT NULL,
+                    page_number INT NOT NULL,
+                    tile_index INT NOT NULL,
+                    bbox TEXT NOT NULL,
+                    crop_type VARCHAR(64) NOT NULL DEFAULT 'full',
+                    design_number VARCHAR(255),
+                    thumbnail_path VARCHAR(700),
+                    file_hash VARCHAR(128) NOT NULL,
+                    source_type VARCHAR(64) DEFAULT 'pdf',
+                    design_code VARCHAR(255),
+                    dxf_bbox TEXT,
+                    polarity_variant INT DEFAULT 0,
+                    entity_count INT DEFAULT 0,
+                    design_index_info TEXT,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    INDEX idx_tiles_pdf_path (pdf_path),
+                    INDEX idx_tiles_file_hash (file_hash),
+                    INDEX idx_tiles_design_code (design_code),
+                    CONSTRAINT fk_tiles_pdf_path FOREIGN KEY (pdf_path) REFERENCES indexed_files (pdf_path) ON DELETE CASCADE
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+                """
+            )
+
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS settings (
+                    `key` VARCHAR(191) PRIMARY KEY,
+                    `value` LONGTEXT NOT NULL
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+                """
+            )
+
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS search_history (
+                    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                    timestamp VARCHAR(64) NOT NULL,
+                    search_mode VARCHAR(64) NOT NULL,
+                    query_text TEXT,
+                    thumbnail_b64 LONGTEXT,
+                    results_count INT DEFAULT 0,
+                    top_match_code VARCHAR(255),
+                    top_match_score DOUBLE DEFAULT 0.0,
+                    INDEX idx_search_history_timestamp (timestamp)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+                """
+            )
+            conn.commit()
+            logger.debug("MySQL Catalog database initialized.")
+
+    def _init_sqlite_db(self) -> None:
+        """Initializes SQLite fallback tables and indices."""
         with self._get_connection() as conn:
             cursor = conn.cursor()
 
@@ -281,7 +494,11 @@ class CatalogDatabase:
             if not row:
                 return None
             data = dict(row)
-            data["bbox"] = json.loads(data["bbox"])
+            if isinstance(data.get("bbox"), str):
+                try:
+                    data["bbox"] = json.loads(data["bbox"])
+                except Exception:
+                    pass
             return data
 
     def get_tiles_by_ids(self, tile_ids: list[int]) -> dict[int, dict[str, Any]]:
@@ -299,7 +516,11 @@ class CatalogDatabase:
                 ).fetchall()
                 for r in rows:
                     item = dict(r)
-                    item["bbox"] = json.loads(item["bbox"])
+                    if isinstance(item.get("bbox"), str):
+                        try:
+                            item["bbox"] = json.loads(item["bbox"])
+                        except Exception:
+                            pass
                     results[item["id"]] = item
         return results
 
@@ -390,7 +611,11 @@ class CatalogDatabase:
             matches = []
             for row in cursor.fetchall():
                 row_dict = dict(row)
-                row_dict["bbox"] = json.loads(row_dict["bbox"])
+                if isinstance(row_dict.get("bbox"), str):
+                    try:
+                        row_dict["bbox"] = json.loads(row_dict["bbox"])
+                    except Exception:
+                        pass
                 d_code = str(row_dict.get("design_code") or row_dict.get("design_number") or "")
                 clean_c = re.sub(r"[\s\-_#]", "", d_code).lower()
                 if not clean_c:

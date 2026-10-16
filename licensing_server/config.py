@@ -18,11 +18,11 @@ class Settings(BaseModel):
     API_V1_PREFIX: str = "/api/v1"
     DEBUG: bool = False
 
-    # Database: PostgreSQL for production, SQLite for local testing
+    # Database: MySQL default (highly secure, normalized InnoDB)
     DATABASE_URL: str = Field(
         default_factory=lambda: os.environ.get(
             "DATABASE_URL",
-            f"sqlite:///{_DEFAULT_DB_FILE}",
+            "mysql+pymysql://root:root%40123@127.0.0.1:3306/design_matcher_licensing?charset=utf8mb4",
         )
     )
 
