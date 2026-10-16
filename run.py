@@ -2,6 +2,7 @@
 Launcher for Design Matcher.
 Run this script to launch the PySide6 desktop GUI application or pass CLI arguments:
     python run.py
+    python run.py admin
     python run.py index <catalog_path>
     python run.py search <photo_path>
     python run.py status

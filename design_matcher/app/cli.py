@@ -312,6 +312,22 @@ def cmd_download_model(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_admin(args: argparse.Namespace) -> int:
+    """Launches the licensing and subscription administration server."""
+    import uvicorn
+    host = args.host
+    port = args.port
+    print("\n=======================================================")
+    print(" Design Matcher - License Authority Admin Server")
+    print("=======================================================")
+    print(f" Web Portal: http://{host if host != '0.0.0.0' else 'localhost'}:{port}/admin")
+    print(" Default Username: admin")
+    print(" Default Password: AdminPass@2026")
+    print("=======================================================\n")
+    uvicorn.run("licensing_server.main:app", host=host, port=port, reload=args.reload)
+    return 0
+
+
 def main() -> None:
     """Main CLI entrypoint."""
     parser = argparse.ArgumentParser(
@@ -321,6 +337,12 @@ def main() -> None:
     parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose debug logging.")
 
     subparsers = parser.add_subparsers(dest="command", required=True, help="Sub-command to execute")
+
+    # admin command
+    parser_admin = subparsers.add_parser("admin", help="Start the licensing authority web admin portal.")
+    parser_admin.add_argument("--host", default="0.0.0.0", help="Host address (default: 0.0.0.0)")
+    parser_admin.add_argument("--port", type=int, default=8000, help="Port to bind (default: 8000)")
+    parser_admin.add_argument("--reload", action="store_true", help="Enable auto-reload on code change.")
 
     # index command
     parser_index = subparsers.add_parser("index", help="Recursively index PDF & DXF catalogs in a directory.")
@@ -361,7 +383,9 @@ def main() -> None:
     args = parser.parse_args()
     setup_cli_logging(args.verbose)
 
-    if args.command == "index":
+    if args.command == "admin":
+        sys.exit(cmd_admin(args))
+    elif args.command == "index":
         sys.exit(cmd_index(args))
     elif args.command == "index-dxf":
         sys.exit(cmd_index_dxf(args))
@@ -373,6 +397,7 @@ def main() -> None:
         sys.exit(cmd_status(args))
     elif args.command == "download-model":
         sys.exit(cmd_download_model(args))
+
 
 
 if __name__ == "__main__":
