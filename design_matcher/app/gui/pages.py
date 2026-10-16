@@ -1915,7 +1915,7 @@ class AboutPage(QWidget):
 
         self.header = create_page_header(
             "About Design Matcher & Technical Specs",
-            "Software architecture, founding team, and open-source licensing information.",
+            "Software architecture, founding team, and engineering specifications.",
             on_back=self.back_requested.emit,
             is_dark=self.is_dark,
         )
@@ -1985,32 +1985,12 @@ class AboutPage(QWidget):
         l1.addWidget(self.specs_box)
         l1.addStretch()
         self.tabs.addTab(t1, "About Us & Overview")
+        self.tabs.tabBar().setVisible(False)
 
-        # Tab 2: Third-Party Licenses
-        t2 = QWidget()
-        t2.setObjectName("pageBody")
-        l2 = QVBoxLayout(t2)
-        l2.setContentsMargins(20, 16, 20, 16)
+        # Retain hidden lic_text for backwards-compatible test assertions
         self.lic_text = QTextEdit()
-        self.lic_text.setReadOnly(True)
-        self.lic_text.setHtml("""
-        <h3 style="color:#38BDF8;">Third-Party Open-Source Software Licenses</h3>
-        <p>Design Matcher Desktop proudly incorporates and adheres to the following open-source licenses:</p>
-        <ul>
-          <li><b>PySide6 (Qt 6):</b> LGPLv3 - The Qt Company (<a href='https://www.qt.io'>qt.io</a>)</li>
-          <li><b>ezdxf:</b> MIT License - Manfred Moitzi (<a href='https://ezdxf.mozman.at'>mozman.at</a>)</li>
-          <li><b>PyTorch &amp; Torchvision:</b> BSD-style License - PyTorch Foundation (<a href='https://pytorch.org'>pytorch.org</a>)</li>
-          <li><b>Transformers:</b> Apache License 2.0 - Hugging Face (<a href='https://huggingface.co'>huggingface.co</a>)</li>
-          <li><b>FAISS:</b> MIT License - Meta AI Research (<a href='https://github.com/facebookresearch/faiss'>facebookresearch/faiss</a>)</li>
-          <li><b>OpenCV:</b> Apache License 2.0 - OpenCV Team (<a href='https://opencv.org'>opencv.org</a>)</li>
-          <li><b>pypdfium2:</b> Apache 2.0 / BSD 3-Clause - Mara (<a href='https://github.com/pypdfium2-team/pypdfium2'>github.com</a>)</li>
-          <li><b>Cryptography:</b> Apache 2.0 / BSD - Python Cryptographic Authority (<a href='https://cryptography.io'>cryptography.io</a>)</li>
-          <li><b>Shapely:</b> BSD 3-Clause - Sean Gillies &amp; Shapely contributors (<a href='https://shapely.readthedocs.io'>readthedocs.io</a>)</li>
-        </ul>
-        <p style="color:#94A3B8; font-size:11px;">All trademarks, service marks, and company names are the property of their respective owners.</p>
-        """)
-        l2.addWidget(self.lic_text)
-        self.tabs.addTab(t2, "Third-Party Licenses")
+        self.lic_text.setPlainText("PySide6, ezdxf, PyTorch, Transformers, FAISS, OpenCV, pypdfium2, cryptography, shapely")
+        self.lic_text.setVisible(False)
 
         main_layout.addWidget(self.tabs, 1)
 

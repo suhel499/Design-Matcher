@@ -604,29 +604,9 @@ class MainWindow(QMainWindow):
 
         header_layout.addStretch()
 
-        # Text Shortcut Search Box for Design Code (PD 010, etc.)
-        code_search_box = QHBoxLayout()
-        code_search_box.setSpacing(6)
+        # Hidden code search input maintained for query state compatibility
         self.code_search_input = QLineEdit(header)
-        self.code_search_input.setPlaceholderText("Search Design Code (e.g. PD 010)...")
-        self.code_search_input.setStyleSheet(
-            "QLineEdit { background: #1E293B; color: #F8FAFC; border: 1px solid #475569; "
-            "border-radius: 4px; padding: 5px 10px; font-size: 12px; min-width: 210px; } "
-            "QLineEdit:focus { border: 1px solid #7C3AED; background: #0F172A; }"
-        )
-        self.code_search_input.returnPressed.connect(self._search_by_design_code)
-        code_search_box.addWidget(self.code_search_input)
-
-        code_search_btn = QPushButton("Search Code", header)
-        code_search_btn.setObjectName("headerBtn")
-        code_search_btn.setStyleSheet(
-            "QPushButton { background: #7C3AED; color: white; border: none; border-radius: 4px; "
-            "padding: 5px 12px; font-weight: 600; font-size: 11px; } "
-            "QPushButton:hover { background: #6D28D9; }"
-        )
-        code_search_btn.clicked.connect(self._search_by_design_code)
-        code_search_box.addWidget(code_search_btn)
-        header_layout.addLayout(code_search_box)
+        self.code_search_input.setVisible(False)
 
         # Action buttons in header
         self.theme_toggle_btn = QPushButton("🌙 Dark" if self.is_dark else "☀️ Light", header)
@@ -651,8 +631,8 @@ class MainWindow(QMainWindow):
 
         help_btn = QPushButton("❓ Help", header)
         help_btn.setObjectName("headerBtn")
+        help_btn.setVisible(False)
         help_btn.clicked.connect(lambda: self.open_page(5))
-        header_layout.addWidget(help_btn)
 
         more_btn = QPushButton("⋯ More", header)
         more_btn.setObjectName("headerBtn")
@@ -673,8 +653,6 @@ class MainWindow(QMainWindow):
         self.more_menu.addSeparator()
         act_upd = self.more_menu.addAction("🔄 Software Updates")
         act_upd.triggered.connect(lambda: self.open_page(6))
-        act_bak = self.more_menu.addAction("💾 Backup & Data Privacy")
-        act_bak.triggered.connect(lambda: self.open_page(7))
         act_eula = self.more_menu.addAction("📋 License Agreement (EULA)")
         act_eula.triggered.connect(lambda: self.open_page(2))
         more_btn.setMenu(self.more_menu)
@@ -2085,10 +2063,6 @@ class MainWindow(QMainWindow):
         act_open_photo.triggered.connect(self._select_photo_file)
 
         file_menu.addSeparator()
-        act_backup = file_menu.addAction("Backup & Restore...")
-        act_backup.triggered.connect(lambda: self.open_page(7))
-
-        file_menu.addSeparator()
         act_exit = file_menu.addAction("Exit")
         act_exit.setShortcut("Ctrl+Q")
         act_exit.triggered.connect(self.close)
@@ -2120,9 +2094,6 @@ class MainWindow(QMainWindow):
 
         # Help Menu
         help_menu = mb.addMenu("&Help")
-        act_help = help_menu.addAction("Quick Start Guide & Troubleshooting")
-        act_help.setShortcut("F12")
-        act_help.triggered.connect(lambda: self.open_page(5))
         act_support = help_menu.addAction("📞 Contact Us & Support...")
         act_support.triggered.connect(lambda: self.open_page(9))
         act_about = help_menu.addAction("ℹ️ About Us & Specifications")
