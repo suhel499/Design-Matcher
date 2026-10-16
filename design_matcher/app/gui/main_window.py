@@ -609,6 +609,12 @@ class MainWindow(QMainWindow):
         self.code_search_input.setVisible(False)
 
         # Action buttons in header
+        self.license_btn = QPushButton(header)
+        self.license_btn.setObjectName("headerLicenseBtn")
+        self.license_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.license_btn.clicked.connect(self._open_license_page)
+        header_layout.addWidget(self.license_btn)
+
         self.theme_toggle_btn = QPushButton("🌙 Dark" if self.is_dark else "☀️ Light", header)
         self.theme_toggle_btn.setObjectName("headerBtn")
         self.theme_toggle_btn.clicked.connect(self._toggle_theme)
@@ -623,11 +629,6 @@ class MainWindow(QMainWindow):
         settings_btn.setObjectName("headerBtn")
         settings_btn.clicked.connect(self._open_settings)
         header_layout.addWidget(settings_btn)
-
-        self.license_btn = QPushButton("🔑 License", header)
-        self.license_btn.setObjectName("headerBtn")
-        self.license_btn.setVisible(False)
-        self.license_btn.clicked.connect(self._open_license_dialog)
 
         help_btn = QPushButton("❓ Help", header)
         help_btn.setObjectName("headerBtn")
@@ -1746,9 +1747,8 @@ class MainWindow(QMainWindow):
             accepted = self.catalog_index.db.get_setting("eula_accepted", "0") == "1"
             self.eula_page.set_already_accepted(accepted)
         elif tab_id == 3:
-            # Activation & Subscription Management page is removed from UI
-            self.open_page(0)
-            return
+            self.license_page.refresh()
+            self.license_page.apply_theme(self.is_dark)
         elif tab_id == 4:
             self.settings_page._load_values()
 
@@ -2141,6 +2141,9 @@ class MainWindow(QMainWindow):
                     "QLineEdit:focus { border: 1px solid #0284C7; background: #F8FAFC; }"
                 )
 
+        if hasattr(self, "license_btn"):
+            self._update_license_indicator()
+
         if hasattr(self, "theme_toggle_btn"):
             self.theme_toggle_btn.setText("🌙 Dark" if is_dark else "☀️ Light")
             self.theme_toggle_btn.setToolTip("Switch to Light Theme" if is_dark else "Switch to Dark Theme")
@@ -2280,20 +2283,13 @@ class MainWindow(QMainWindow):
         verdict = self.license_manager.check_license()
         if verdict.is_valid:
             days = verdict.days_remaining
-            if days <= 7:
-                self.license_btn.setText(f"⚠️ License ({days}d left)")
-                self.license_btn.setStyleSheet(
-                    "QPushButton { background: #78350F; color: #FCD34D; border: 1px solid #D97706; "
-                    "padding: 5px 12px; font-weight: 700; font-size: 12px; border-radius: 5px; } "
-                    "QPushButton:hover { background: #B45309; color: white; }"
-                )
-            else:
-                self.license_btn.setText(f"🔑 Active ({days}d)")
-                self.license_btn.setStyleSheet(
-                    "QPushButton { background: #064E3B; color: #6EE7B7; border: 1px solid #059669; "
-                    "padding: 5px 12px; font-weight: 600; font-size: 12px; border-radius: 5px; } "
-                    "QPushButton:hover { background: #047857; color: white; }"
-                )
+            self.license_btn.setText(f"Activated ({days}) days are remaining day")
+            self.license_btn.setStyleSheet(
+                "QPushButton#headerLicenseBtn { background-color: #059669; color: #FFFFFF; border: 1px solid #10B981; "
+                "padding: 5px 14px; font-weight: 700; font-size: 12px; border-radius: 6px; } "
+                "QPushButton#headerLicenseBtn:hover { background-color: #047857; color: #FFFFFF; }"
+            )
+            self.license_btn.setVisible(True)
             if hasattr(self, "nav_tab_dxf_preview"):
                 self.nav_tab_dxf_preview.setEnabled(True)
                 self.nav_tab_dxf_preview.setText("📐 2. DXF Preview")
@@ -2303,19 +2299,13 @@ class MainWindow(QMainWindow):
                 self.nav_tab_dxf_preview.setProperty("locked", False)
                 self.nav_tab_dxf_preview.style().polish(self.nav_tab_dxf_preview)
         else:
-            if verdict.is_expired:
-                self.license_btn.setText("🔒 License Expired")
-            elif verdict.status.value == "SUSPENDED":
-                self.license_btn.setText("⚠️ License Suspended")
-            elif verdict.status.value == "REVOKED":
-                self.license_btn.setText("🔒 License Revoked")
-            else:
-                self.license_btn.setText("🔑 Activate License")
+            self.license_btn.setText("DeActivated")
             self.license_btn.setStyleSheet(
-                "QPushButton { background: #7F1D1D; color: #FCA5A5; border: 1px solid #DC2626; "
-                "padding: 5px 12px; font-weight: 700; font-size: 12px; border-radius: 5px; } "
-                "QPushButton:hover { background: #B91C1C; color: white; }"
+                "QPushButton#headerLicenseBtn { background-color: #DC2626; color: #FFFFFF; border: 1px solid #EF4444; "
+                "padding: 5px 14px; font-weight: 700; font-size: 12px; border-radius: 6px; } "
+                "QPushButton#headerLicenseBtn:hover { background-color: #B91C1C; color: #FFFFFF; }"
             )
+            self.license_btn.setVisible(True)
             if hasattr(self, "nav_tab_dxf_preview"):
                 self.nav_tab_dxf_preview.setEnabled(False)
                 self.nav_tab_dxf_preview.setText("🔒 2. DXF Preview (Locked)")
@@ -2329,12 +2319,13 @@ class MainWindow(QMainWindow):
             if hasattr(self, "main_stack") and self.main_stack.currentIndex() == 1:
                 self._on_main_tab_changed(0)
 
-        # Keep license button hidden from UI
-        self.license_btn.setVisible(False)
+    def _open_license_page(self) -> None:
+        """Navigates to the License Activation page."""
+        self.open_page(3)
 
     def _open_license_dialog(self) -> None:
-        """License UI removed from view."""
-        pass
+        """Navigates to the License Activation page."""
+        self.open_page(3)
 
     def _check_license_on_startup(self) -> None:
         """Emits notification if license is expiring soon or expired, and triggers background online heartbeat."""

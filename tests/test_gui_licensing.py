@@ -93,7 +93,11 @@ def test_main_window_license_indicator_updates(qtbot, temp_lic_dir, keypair, mon
     qtbot.addWidget(window)
 
     # Initially unlicensed
-    assert "Activate License" in window.license_btn.text() or "Expired" in window.license_btn.text()
+    assert "DeActivated" in window.license_btn.text() or "Activate" in window.license_btn.text() or "Expired" in window.license_btn.text()
+
+    # Clicking DeActivated button opens the License Activation page (tab index 3)
+    window.license_btn.click()
+    assert window.main_stack.currentIndex() == 3
 
     # Now activate a license
     now = datetime.now(timezone.utc)
@@ -121,7 +125,7 @@ def test_main_window_license_indicator_updates(qtbot, temp_lic_dir, keypair, mon
     })
 
     window._update_license_indicator()
-    assert "Active" in window.license_btn.text()
+    assert "Activated" in window.license_btn.text() or "Active" in window.license_btn.text()
 
 
 def test_dxf_preview_locked_when_unlicensed_or_expired(qtbot, temp_lic_dir, keypair, monkeypatch):
