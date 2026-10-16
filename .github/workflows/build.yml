@@ -27,20 +27,28 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip setuptools wheel pyinstaller pillow
+          pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
           pip install -r requirements.txt
-          pip install -r design_matcher/requirements.txt
 
       - name: Compile application with PyInstaller
         run: pyinstaller --clean -y design_matcher.spec
 
       - name: Compile Windows Installer with Inno Setup
-        run: '& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer.iss'
+        run: |
+          if (Test-Path "C:\Program Files (x86)\Inno Setup 6\ISCC.exe") {
+            & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer.iss
+          } elseif (Test-Path "C:\Program Files\Inno Setup 6\ISCC.exe") {
+            & "C:\Program Files\Inno Setup 6\ISCC.exe" installer.iss
+          } else {
+            iscc installer.iss
+          }
 
       - name: Upload Windows Setup Artifact
         uses: actions/upload-artifact@v4
         with:
           name: DesignMatcher_Windows_Setup
           path: Output/DesignMatcher_Setup_*.exe
+          retention-days: 30
 
   build-macos:
     name: Build macOS DMG (.dmg)

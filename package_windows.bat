@@ -37,6 +37,9 @@ set "ISCC_PATH=C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
 if not exist "!ISCC_PATH!" (
     set "ISCC_PATH=C:\Program Files\Inno Setup 6\ISCC.exe"
 )
+if not exist "!ISCC_PATH!" (
+    for /f "tokens=*" %%i in ('where iscc 2^>nul') do set "ISCC_PATH=%%i"
+)
 
 if exist "!ISCC_PATH!" (
     "!ISCC_PATH!" installer.iss

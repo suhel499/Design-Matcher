@@ -112,6 +112,9 @@ hiddenimports = [
     "PySide6.QtPrintSupport",
     # Core Data & Image processing
     "sqlite3",
+    "pymysql",
+    "pymysql.cursors",
+    "pymysql.constants",
     "cv2",
     "PIL",
     "PIL.Image",
@@ -171,6 +174,7 @@ for pkg in [
     "faiss",
     "ezdxf",
     "shapely",
+    "pymysql",
 ]:
     hiddenimports += safe_collect_submodules(pkg)
 
