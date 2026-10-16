@@ -63,11 +63,18 @@ async function apiRequest(endpoint, method = 'GET', body = null) {
   }
 
   if (!response.ok) {
-    let errorDetail = response.statusText;
+    let errorDetail = response.statusText || `Server error (${response.status})`;
     try {
       const errJson = await response.json();
       errorDetail = errJson.detail || JSON.stringify(errJson);
-    } catch (_) {}
+    } catch (_) {
+      try {
+        const rawText = await response.text();
+        if (rawText) {
+          errorDetail = rawText;
+        }
+      } catch (__) {}
+    }
     throw new Error(errorDetail);
   }
 
@@ -90,8 +97,17 @@ function setupEventListeners() {
       });
 
       if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.detail || 'Authentication failed');
+        let errorDetail = `Authentication failed (${res.status})`;
+        try {
+          const err = await res.json();
+          errorDetail = err.detail || JSON.stringify(err);
+        } catch (_) {
+          try {
+            const rawText = await res.text();
+            if (rawText) errorDetail = rawText;
+          } catch (__) {}
+        }
+        throw new Error(errorDetail);
       }
 
       const data = await res.json();
@@ -103,6 +119,7 @@ function setupEventListeners() {
     } catch (err) {
       loginError.textContent = err.message;
     }
+
   });
 
   // Logout

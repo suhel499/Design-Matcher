@@ -6,7 +6,10 @@ Loads environment variables with safe defaults for development and production.
 from __future__ import annotations
 
 import os
+from pathlib import Path
 from pydantic import BaseModel, Field
+
+_DEFAULT_DB_FILE = Path(__file__).resolve().parent.parent / "licensing.db"
 
 
 class Settings(BaseModel):
@@ -19,7 +22,7 @@ class Settings(BaseModel):
     DATABASE_URL: str = Field(
         default_factory=lambda: os.environ.get(
             "DATABASE_URL",
-            "sqlite:///./licensing.db",
+            f"sqlite:///{_DEFAULT_DB_FILE}",
         )
     )
 
