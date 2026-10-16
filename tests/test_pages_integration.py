@@ -32,12 +32,15 @@ from app.gui.pages import (
     AboutPage,
     BackupPage,
     CatalogManagerPage,
+    ContactPage,
     EulaPage,
     HelpPage,
     HistoryPage,
     LicensePage,
+    PrivacyPolicyPage,
     SettingsPage,
     SupportPage,
+    TermsConditionsPage,
     UpdatesPage,
 )
 
@@ -205,12 +208,42 @@ def test_support_page_log_sanitizer(qtbot):
     assert "[IP_REDACTED]" in sanitized
 
 
+def test_contact_page_founder_details(qtbot):
+    page = ContactPage()
+    qtbot.addWidget(page)
+
+    from PySide6.QtWidgets import QLabel
+    labels = page.findChildren(QLabel)
+    all_text = " ".join([l.text() for l in labels])
+
+    assert "suhel.mulani90@gmail.com" in all_text
+    assert "9422602386" in all_text
+    assert "nihal.mulani@gmail.com" in all_text
+    assert "9423591358" in all_text
+    assert "Suhel Mulani" in all_text
+    assert "Nihal Mulani" in all_text
+
+
+def test_privacy_and_terms_pages(qtbot):
+    privacy_page = PrivacyPolicyPage()
+    qtbot.addWidget(privacy_page)
+    assert "PRIVACY POLICY" in privacy_page.txt_privacy.toPlainText()
+    assert "100% On-Device" in privacy_page.txt_privacy.toPlainText()
+
+    terms_page = TermsConditionsPage()
+    qtbot.addWidget(terms_page)
+    assert "TERMS & CONDITIONS" in terms_page.txt_terms.toPlainText()
+    assert "Commercial License Grant" in terms_page.txt_terms.toPlainText()
+
+
 def test_main_window_navigation_and_pages(qtbot, temp_dir):
     win = MainWindow(data_dir=temp_dir)
     qtbot.addWidget(win)
 
-    # All 10 views in main_stack
-    assert win.main_stack.count() == 10
+    # All 12 views in main_stack:
+    # 0: Matcher, 1: DXF Preview, 2: EULA, 3: License, 4: Settings, 5: Help,
+    # 6: Updates, 7: Backup, 8: About, 9: Contact, 10: Privacy, 11: Terms
+    assert win.main_stack.count() == 12
 
     # Navigate to Settings (page 4)
     win.open_page(4)
@@ -220,10 +253,31 @@ def test_main_window_navigation_and_pages(qtbot, temp_dir):
     win.open_page(5)
     assert win.main_stack.currentIndex() == 5
 
+    # Navigate to Contact (page 9)
+    win.open_page(9)
+    assert win.main_stack.currentIndex() == 9
+
+    # Navigate to Privacy Policy (page 10)
+    win.open_page(10)
+    assert win.main_stack.currentIndex() == 10
+
+    # Navigate to Terms & Conditions (page 11)
+    win.open_page(11)
+    assert win.main_stack.currentIndex() == 11
+
     # Navigate back to Matcher (page 0)
     win.open_page(0)
     assert win.main_stack.currentIndex() == 0
     assert win.nav_tab_matcher.isChecked()
+
+    # Test Theme Switching (Dark <-> Light)
+    win.apply_theme(is_dark=False)
+    assert win.is_dark is False
+    assert win.catalog_index.db.get_setting("interface_theme") == "light"
+
+    win._toggle_theme()
+    assert win.is_dark is True
+    assert win.catalog_index.db.get_setting("interface_theme") == "dark"
 
     # Verify search history logging
     win._record_search_to_history(search_mode="test_mode", query_text="test_query", results=[])

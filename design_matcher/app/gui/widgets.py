@@ -179,11 +179,13 @@ class PhotoDropArea(QFrame):
         self.current_file_path: str = ""
 
         self.setFrameShape(QFrame.Shape.StyledPanel)
+        self.is_dark = True
         self.setObjectName("photoDropArea")
         self.setMinimumSize(280, 260)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
 
         self._setup_ui()
+        self.apply_theme(True)
 
     def _setup_ui(self) -> None:
         layout = QVBoxLayout(self)
@@ -204,6 +206,15 @@ class PhotoDropArea(QFrame):
         layout.addWidget(self.preview_label)
         layout.addWidget(self.text_label)
         layout.addWidget(self.subtext_label)
+
+    def apply_theme(self, is_dark: bool) -> None:
+        self.is_dark = is_dark
+        if is_dark:
+            self.text_label.setStyleSheet("color: #E2E8F0; font-size: 13px; font-weight: 500;")
+            self.subtext_label.setStyleSheet("color: #94A3B8; font-size: 11px;")
+        else:
+            self.text_label.setStyleSheet("color: #334155; font-size: 13px; font-weight: 500;")
+            self.subtext_label.setStyleSheet("color: #64748B; font-size: 11px;")
 
     def dragEnterEvent(self, event: QDragEnterEvent) -> None:
         if event.mimeData().hasUrls():
@@ -327,22 +338,44 @@ class ResultCardWidget(QFrame):
         self.result = result
         self.data_dir = data_dir
         self.query_mask = query_mask
+        self.is_dark = True
         self.is_selected = False
 
         self.setObjectName("resultCard")
         self.setFrameShape(QFrame.Shape.StyledPanel)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self._setup_ui()
+        self.apply_theme(True)
 
     def set_selected(self, selected: bool) -> None:
         self.is_selected = selected
         if selected:
+            border_c = "#38BDF8" if self.is_dark else "#2563EB"
+            bg_c = "#1E293B" if self.is_dark else "#F8FAFC"
             self.setStyleSheet(
-                "QFrame#resultCard { background-color: #F8FAFC; border: 2px solid #2563EB; "
-                "border-radius: 8px; margin-bottom: 8px; }"
+                f"QFrame#resultCard {{ background-color: {bg_c}; border: 2px solid {border_c}; "
+                f"border-radius: 8px; margin-bottom: 8px; }}"
             )
         else:
             self.setStyleSheet("")
+
+    def apply_theme(self, is_dark: bool) -> None:
+        self.is_dark = is_dark
+        if is_dark:
+            if hasattr(self, "file_name_label"):
+                self.file_name_label.setStyleSheet("font-size: 13px; font-weight: 700; color: #F8FAFC;")
+            if hasattr(self, "page_label"):
+                self.page_label.setStyleSheet("color: #94A3B8; font-size: 12px; font-weight: 500;")
+            if hasattr(self, "path_label"):
+                self.path_label.setStyleSheet("color: #64748B; font-size: 11px;")
+        else:
+            if hasattr(self, "file_name_label"):
+                self.file_name_label.setStyleSheet("font-size: 13px; font-weight: 700; color: #0F172A;")
+            if hasattr(self, "page_label"):
+                self.page_label.setStyleSheet("color: #475569; font-size: 12px; font-weight: 500;")
+            if hasattr(self, "path_label"):
+                self.path_label.setStyleSheet("color: #64748B; font-size: 11px;")
+        self.set_selected(self.is_selected)
 
     def mousePressEvent(self, event) -> None:
         if event.button() == Qt.MouseButton.LeftButton:
@@ -406,10 +439,10 @@ class ResultCardWidget(QFrame):
         )
         title_row.addWidget(rank_badge)
 
-        file_name_label = QLabel(self.result.pdf_name, self)
-        file_name_label.setStyleSheet("font-size: 13px; font-weight: 700; color: #0F172A;")
-        file_name_label.setToolTip(self.result.pdf_path)
-        title_row.addWidget(file_name_label, 1)
+        self.file_name_label = QLabel(self.result.pdf_name, self)
+        self.file_name_label.setStyleSheet("font-size: 13px; font-weight: 700; color: #0F172A;")
+        self.file_name_label.setToolTip(self.result.pdf_path)
+        title_row.addWidget(self.file_name_label, 1)
 
         format_pill = QLabel("DXF CAD" if is_dxf else "PDF Catalog", self)
         if is_dxf:
@@ -490,15 +523,15 @@ class ResultCardWidget(QFrame):
         if self.result.iou is not None:
             page_info += f"  |  Shape IoU: {self.result.iou:.2f}"
 
-        page_label = QLabel(page_info, self)
-        page_label.setStyleSheet("color: #475569; font-size: 12px; font-weight: 500;")
-        details_layout.addWidget(page_label)
+        self.page_label = QLabel(page_info, self)
+        self.page_label.setStyleSheet("color: #475569; font-size: 12px; font-weight: 500;")
+        details_layout.addWidget(self.page_label)
 
         # Full path label with tooltip
-        path_label = QLabel(f"Path: {self.result.pdf_path}", self)
-        path_label.setToolTip(self.result.pdf_path)
-        path_label.setStyleSheet("color: #64748B; font-size: 11px;")
-        details_layout.addWidget(path_label)
+        self.path_label = QLabel(f"Path: {self.result.pdf_path}", self)
+        self.path_label.setToolTip(self.result.pdf_path)
+        self.path_label.setStyleSheet("color: #64748B; font-size: 11px;")
+        details_layout.addWidget(self.path_label)
 
         # Action buttons row
         btn_row = QHBoxLayout()

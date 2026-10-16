@@ -60,21 +60,24 @@ from PySide6.QtWidgets import (
 
 logger = logging.getLogger(__name__)
 
-# Common styling tokens
-PAGE_STYLESHEET = """
-QWidget {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+# Dynamic light & dark theme page stylesheets
+def get_page_stylesheet(is_dark: bool = True) -> str:
+    if is_dark:
+        return """
+QWidget#pageRoot, QWidget#pageBody, QScrollArea, QScrollArea > QWidget {
+    background-color: #0F172A;
     color: #F8FAFC;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
 }
 
 QScrollArea {
     border: none;
-    background-color: transparent;
+    background-color: #0F172A;
 }
 
 QScrollBar:vertical {
     border: none;
-    background: #0F172A;
+    background: #0B1120;
     width: 8px;
     margin: 0px;
 }
@@ -96,10 +99,31 @@ QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
 QLabel {
     color: #F8FAFC;
     background: transparent;
+    font-size: 13px;
+}
+
+QGroupBox {
+    font-size: 13px;
+    font-weight: 700;
+    color: #38BDF8;
+    border: 1px solid #334155;
+    border-radius: 8px;
+    margin-top: 14px;
+    padding-top: 18px;
+    background-color: #1E293B;
+}
+
+QGroupBox::title {
+    subcontrol-origin: margin;
+    subcontrol-position: top left;
+    left: 14px;
+    padding: 0 6px;
+    background-color: #1E293B;
+    color: #38BDF8;
 }
 
 QLineEdit, QTextEdit, QComboBox, QSpinBox {
-    background-color: #1E293B;
+    background-color: #0B1120;
     color: #F8FAFC;
     border: 1px solid #334155;
     border-radius: 6px;
@@ -115,6 +139,14 @@ QLineEdit:focus, QTextEdit:focus, QComboBox:focus, QSpinBox:focus {
 QComboBox::drop-down {
     border: none;
     padding-right: 8px;
+}
+
+QComboBox QAbstractItemView {
+    background-color: #1E293B;
+    color: #F8FAFC;
+    selection-background-color: #2563EB;
+    selection-color: #FFFFFF;
+    border: 1px solid #334155;
 }
 
 QPushButton.primaryBtn {
@@ -180,7 +212,7 @@ QTableWidget::item:selected {
 }
 
 QHeaderView::section {
-    background-color: #0F172A;
+    background-color: #0B1120;
     color: #94A3B8;
     padding: 8px;
     font-weight: 600;
@@ -217,38 +249,296 @@ QTabBar::tab:hover:!selected {
     background: #334155;
     color: #F8FAFC;
 }
+
+QSlider::groove:horizontal {
+    height: 6px;
+    background: #334155;
+    border-radius: 3px;
+}
+
+QSlider::sub-page:horizontal {
+    background: #38BDF8;
+    border-radius: 3px;
+}
+
+QSlider::handle:horizontal {
+    background: #FFFFFF;
+    border: 2px solid #38BDF8;
+    width: 16px;
+    margin-top: -5px;
+    margin-bottom: -5px;
+    border-radius: 8px;
+}
+"""
+    else:
+        return """
+QWidget#pageRoot, QWidget#pageBody, QScrollArea, QScrollArea > QWidget {
+    background-color: #F8FAFC;
+    color: #0F172A;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+QScrollArea {
+    border: none;
+    background-color: #F8FAFC;
+}
+
+QScrollBar:vertical {
+    border: none;
+    background: #F1F5F9;
+    width: 8px;
+    margin: 0px;
+}
+
+QScrollBar::handle:vertical {
+    background: #CBD5E1;
+    min-height: 20px;
+    border-radius: 4px;
+}
+
+QScrollBar::handle:vertical:hover {
+    background: #94A3B8;
+}
+
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+    height: 0px;
+}
+
+QLabel {
+    color: #0F172A;
+    background: transparent;
+    font-size: 13px;
+}
+
+QGroupBox {
+    font-size: 13px;
+    font-weight: 700;
+    color: #0284C7;
+    border: 1px solid #CBD5E1;
+    border-radius: 8px;
+    margin-top: 14px;
+    padding-top: 18px;
+    background-color: #FFFFFF;
+}
+
+QGroupBox::title {
+    subcontrol-origin: margin;
+    subcontrol-position: top left;
+    left: 14px;
+    padding: 0 6px;
+    background-color: #FFFFFF;
+    color: #0284C7;
+}
+
+QLineEdit, QTextEdit, QComboBox, QSpinBox {
+    background-color: #FFFFFF;
+    color: #0F172A;
+    border: 1px solid #CBD5E1;
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-size: 13px;
+}
+
+QLineEdit:focus, QTextEdit:focus, QComboBox:focus, QSpinBox:focus {
+    border: 1px solid #2563EB;
+    background-color: #FFFFFF;
+}
+
+QComboBox::drop-down {
+    border: none;
+    padding-right: 8px;
+}
+
+QComboBox QAbstractItemView {
+    background-color: #FFFFFF;
+    color: #0F172A;
+    selection-background-color: #2563EB;
+    selection-color: #FFFFFF;
+    border: 1px solid #CBD5E1;
+}
+
+QPushButton.primaryBtn {
+    background-color: #2563EB;
+    color: #FFFFFF;
+    border: 1px solid #2563EB;
+    border-radius: 6px;
+    padding: 8px 18px;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+QPushButton.primaryBtn:hover {
+    background-color: #1D4ED8;
+}
+
+QPushButton.secondaryBtn {
+    background-color: #FFFFFF;
+    color: #1E293B;
+    border: 1px solid #CBD5E1;
+    border-radius: 6px;
+    padding: 8px 18px;
+    font-size: 13px;
+    font-weight: 500;
+}
+
+QPushButton.secondaryBtn:hover {
+    background-color: #F1F5F9;
+    color: #0F172A;
+}
+
+QPushButton.dangerBtn {
+    background-color: #FEE2E2;
+    color: #991B1B;
+    border: 1px solid #FCA5A5;
+    border-radius: 6px;
+    padding: 8px 18px;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+QPushButton.dangerBtn:hover {
+    background-color: #FCA5A5;
+    color: #7F1D1D;
+}
+
+QTableWidget {
+    background-color: #FFFFFF;
+    gridline-color: #E2E8F0;
+    border: 1px solid #CBD5E1;
+    border-radius: 6px;
+    color: #0F172A;
+    font-size: 12px;
+}
+
+QTableWidget::item {
+    padding: 6px;
+}
+
+QTableWidget::item:selected {
+    background-color: #2563EB;
+    color: #FFFFFF;
+}
+
+QHeaderView::section {
+    background-color: #F1F5F9;
+    color: #475569;
+    padding: 8px;
+    font-weight: 600;
+    border: none;
+    border-bottom: 1px solid #CBD5E1;
+}
+
+QTabWidget::pane {
+    border: 1px solid #CBD5E1;
+    background-color: #FFFFFF;
+    border-radius: 8px;
+}
+
+QTabBar::tab {
+    background: #F1F5F9;
+    color: #64748B;
+    padding: 8px 20px;
+    border: 1px solid #CBD5E1;
+    border-bottom: none;
+    border-top-left-radius: 6px;
+    border-top-right-radius: 6px;
+    margin-right: 4px;
+    font-weight: 600;
+    font-size: 12px;
+}
+
+QTabBar::tab:selected {
+    background: #FFFFFF;
+    color: #2563EB;
+    border-top: 2px solid #2563EB;
+}
+
+QTabBar::tab:hover:!selected {
+    background: #E2E8F0;
+    color: #0F172A;
+}
+
+QSlider::groove:horizontal {
+    height: 6px;
+    background: #E2E8F0;
+    border-radius: 3px;
+}
+
+QSlider::sub-page:horizontal {
+    background: #2563EB;
+    border-radius: 3px;
+}
+
+QSlider::handle:horizontal {
+    background: #FFFFFF;
+    border: 2px solid #2563EB;
+    width: 16px;
+    margin-top: -5px;
+    margin-bottom: -5px;
+    border-radius: 8px;
+}
 """
 
+PAGE_STYLESHEET = get_page_stylesheet(True)
 
-def create_page_header(title: str, subtitle: str, on_back: Optional[Callable[[], None]] = None) -> QFrame:
-    """Creates a consistent, modern top navigation header for in-app sub-pages."""
+
+def create_page_header(
+    title: str,
+    subtitle: str,
+    on_back: Optional[Callable[[], None]] = None,
+    is_dark: bool = True,
+) -> QFrame:
+    """Creates a consistent, modern top navigation header for in-app sub-pages with dark/light theme support."""
     header = QFrame()
-    header.setStyleSheet("background-color: #0F172A; border-bottom: 1px solid #1E293B; padding: 12px 20px;")
+    header.setObjectName("pageHeader")
     layout = QHBoxLayout(header)
     layout.setContentsMargins(0, 0, 0, 0)
     layout.setSpacing(16)
 
+    back_btn = None
     if on_back:
-        back_btn = QPushButton("← Back to Matcher")
-        back_btn.setStyleSheet(
-            "QPushButton { background: #1E293B; color: #38BDF8; border: 1px solid #334155; "
-            "border-radius: 6px; padding: 6px 14px; font-weight: 600; font-size: 12px; } "
-            "QPushButton:hover { background: #2563EB; color: white; border-color: #3B82F6; }"
-        )
+        back_btn = QPushButton("← Back to Matcher", header)
+        back_btn.setObjectName("headerBackBtn")
+        back_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         back_btn.clicked.connect(on_back)
         layout.addWidget(back_btn)
 
     vbox = QVBoxLayout()
     vbox.setSpacing(2)
-    lbl_title = QLabel(title)
-    lbl_title.setStyleSheet("font-size: 18px; font-weight: 700; color: #FFFFFF;")
-    lbl_sub = QLabel(subtitle)
-    lbl_sub.setStyleSheet("font-size: 12px; color: #94A3B8;")
+    lbl_title = QLabel(title, header)
+    lbl_title.setObjectName("pageHeaderTitle")
+    lbl_sub = QLabel(subtitle, header)
+    lbl_sub.setObjectName("pageHeaderSub")
     vbox.addWidget(lbl_title)
     vbox.addWidget(lbl_sub)
     layout.addLayout(vbox)
 
     layout.addStretch()
+
+    def update_style(dark: bool) -> None:
+        if dark:
+            header.setStyleSheet("QFrame#pageHeader { background-color: #0F172A; border-bottom: 1px solid #1E293B; padding: 12px 20px; }")
+            lbl_title.setStyleSheet("font-size: 18px; font-weight: 700; color: #FFFFFF; background: transparent;")
+            lbl_sub.setStyleSheet("font-size: 12px; color: #94A3B8; background: transparent;")
+            if back_btn:
+                back_btn.setStyleSheet(
+                    "QPushButton#headerBackBtn { background: #1E293B; color: #38BDF8; border: 1px solid #334155; "
+                    "border-radius: 6px; padding: 6px 14px; font-weight: 600; font-size: 12px; } "
+                    "QPushButton#headerBackBtn:hover { background: #2563EB; color: white; border-color: #3B82F6; }"
+                )
+        else:
+            header.setStyleSheet("QFrame#pageHeader { background-color: #FFFFFF; border-bottom: 1px solid #E2E8F0; padding: 12px 20px; }")
+            lbl_title.setStyleSheet("font-size: 18px; font-weight: 700; color: #0F172A; background: transparent;")
+            lbl_sub.setStyleSheet("font-size: 12px; color: #64748B; background: transparent;")
+            if back_btn:
+                back_btn.setStyleSheet(
+                    "QPushButton#headerBackBtn { background: #F1F5F9; color: #2563EB; border: 1px solid #CBD5E1; "
+                    "border-radius: 6px; padding: 6px 14px; font-weight: 600; font-size: 12px; } "
+                    "QPushButton#headerBackBtn:hover { background: #2563EB; color: white; border-color: #2563EB; }"
+                )
+
+    update_style(is_dark)
+    header.update_theme = update_style  # type: ignore[attr-defined]
     return header
 
 
@@ -263,8 +553,10 @@ class EulaPage(QWidget):
 
     def __init__(self, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
-        self.setStyleSheet(PAGE_STYLESHEET)
+        self.setObjectName("pageRoot")
+        self.is_dark = True
         self._setup_ui()
+        self.apply_theme(True)
 
     def _setup_ui(self) -> None:
         main_layout = QVBoxLayout(self)
@@ -274,11 +566,6 @@ class EulaPage(QWidget):
         # Header back row (visible when accessed after initial acceptance)
         header_row = QHBoxLayout()
         self.btn_back = QPushButton("← Back to Matcher")
-        self.btn_back.setStyleSheet(
-            "QPushButton { background: #1E293B; color: #38BDF8; border: 1px solid #334155; "
-            "border-radius: 6px; padding: 6px 14px; font-weight: 600; font-size: 12px; } "
-            "QPushButton:hover { background: #2563EB; color: white; border-color: #3B82F6; }"
-        )
         self.btn_back.clicked.connect(self.back_requested.emit)
         self.btn_back.setVisible(False)
         header_row.addWidget(self.btn_back)
@@ -286,56 +573,36 @@ class EulaPage(QWidget):
         main_layout.addLayout(header_row)
 
         # Welcome banner
-        banner = QFrame(self)
-        banner.setStyleSheet("background: #0F172A; border: 1px solid #1E293B; border-radius: 12px; padding: 24px;")
-        banner_layout = QVBoxLayout(banner)
+        self.banner = QFrame(self)
+        banner_layout = QVBoxLayout(self.banner)
         banner_layout.setSpacing(8)
 
-        title = QLabel("Welcome to Design Matcher")
-        title.setStyleSheet("font-size: 24px; font-weight: 800; color: #38BDF8;")
-        subtitle = QLabel("Please review and accept our End-User License Agreement & Privacy Notice to continue.")
-        subtitle.setStyleSheet("font-size: 13px; color: #94A3B8;")
-        banner_layout.addWidget(title)
-        banner_layout.addWidget(subtitle)
-        main_layout.addWidget(banner)
+        self.title = QLabel("Welcome to Design Matcher")
+        self.subtitle = QLabel("Please review and accept our End-User License Agreement & Privacy Notice to continue.")
+        banner_layout.addWidget(self.title)
+        banner_layout.addWidget(self.subtitle)
+        main_layout.addWidget(self.banner)
 
         # Tabbed Legal Text Area
-        tabs = QTabWidget(self)
+        self.tabs = QTabWidget(self)
         
         # EULA Tab
-        eula_text = QTextEdit()
-        eula_text.setReadOnly(True)
-        eula_text.setHtml("""
-        <h3 style="color:#38BDF8;">DESIGN MATCHER - END USER LICENSE AGREEMENT (EULA)</h3>
-        <p><b>1. Grant of License:</b> Subject to the terms of your commercial or trial subscription, Design Matcher Software grants you a non-exclusive, non-transferable license to install and run Design Matcher on your licensed hardware devices.</p>
-        <p><b>2. Intellectual Property & CAD Linework:</b> You retain 100% full ownership and copyright of all proprietary DXF CAD linework, CNC cut designs, catalogs, and images processed by the software. Design Matcher Software claims zero ownership over your files or resulting matches.</p>
-        <p><b>3. Local Offline Processing:</b> All computer vision feature extraction, DINOv2 neural embedding, and FAISS vector indexing occur entirely on your local computer hardware. Your proprietary DXF linework is never uploaded or shared with external parties.</p>
-        <p><b>4. Subscription & Seat Activations:</b> Each license key enables concurrent activations up to your plan's seat limit. Online and air-gapped offline validation mechanisms verify cryptographic license signatures generated with Ed25519 asymmetric cryptography.</p>
-        <p><b>5. Disclaimer of Warranties:</b> The software is provided "AS IS", without warranty of any kind, express or implied. In no event shall the authors or copyright holders be liable for any claim or damages arising from the use of the software.</p>
-        """)
-        tabs.addTab(eula_text, "End User License Agreement")
+        self.eula_text = QTextEdit()
+        self.eula_text.setReadOnly(True)
+        self.tabs.addTab(self.eula_text, "End User License Agreement")
 
         # Privacy Notice Tab
-        privacy_text = QTextEdit()
-        privacy_text.setReadOnly(True)
-        privacy_text.setHtml("""
-        <h3 style="color:#38BDF8;">PRIVACY NOTICE & LOCAL DATA COMMITMENT</h3>
-        <p><b>1. Zero Cloud Uploads:</b> Customer photos, stencil sketches, and CAD DXF drawings processed inside Design Matcher remain on your machine. We do not store or transmit your design library.</p>
-        <p><b>2. Licensing Telemetry:</b> Periodic license synchronization transmits only your license key, a cryptographic one-way SHA-256 hardware hash, computer name, and OS version to verify active subscription status.</p>
-        <p><b>3. Zero Personal Data Diagnostics:</b> When exporting diagnostic logs for technical support, all user home paths, usernames, and license keys are automatically stripped and replaced with generic tokens.</p>
-        <p><b>4. Complete Data Sovereignty:</b> You can delete your local index, wipe search history, or perform a complete factory reset from the "Backup & Privacy" page at any time.</p>
-        """)
-        tabs.addTab(privacy_text, "Privacy Notice")
+        self.privacy_text = QTextEdit()
+        self.privacy_text.setReadOnly(True)
+        self.tabs.addTab(self.privacy_text, "Privacy Notice")
 
-        main_layout.addWidget(tabs, 1)
+        main_layout.addWidget(self.tabs, 1)
 
         # Acceptance controls
-        bottom_box = QFrame(self)
-        bottom_box.setStyleSheet("background: #0F172A; border: 1px solid #1E293B; border-radius: 8px; padding: 16px;")
-        bottom_layout = QHBoxLayout(bottom_box)
+        self.bottom_box = QFrame(self)
+        bottom_layout = QHBoxLayout(self.bottom_box)
 
         self.accept_check = QCheckBox("I have read and agree to the End User License Agreement and Privacy Notice")
-        self.accept_check.setStyleSheet("font-size: 13px; font-weight: 600; color: #F8FAFC;")
         self.accept_check.toggled.connect(self._on_check_toggled)
         bottom_layout.addWidget(self.accept_check)
 
@@ -344,13 +611,58 @@ class EulaPage(QWidget):
         self.btn_continue = QPushButton("Accept & Continue →")
         self.btn_continue.setProperty("class", "primaryBtn")
         self.btn_continue.setEnabled(False)
-        self.btn_continue.setStyleSheet(
-            "QPushButton:disabled { background: #334155; color: #64748B; border: 1px solid #475569; }"
-        )
         self.btn_continue.clicked.connect(self._on_accept)
         bottom_layout.addWidget(self.btn_continue)
 
-        main_layout.addWidget(bottom_box)
+        main_layout.addWidget(self.bottom_box)
+
+    def apply_theme(self, is_dark: bool) -> None:
+        self.is_dark = is_dark
+        self.setStyleSheet(get_page_stylesheet(is_dark))
+
+        bg_card = "#0F172A" if is_dark else "#FFFFFF"
+        border_card = "#1E293B" if is_dark else "#CBD5E1"
+        title_col = "#38BDF8" if is_dark else "#0284C7"
+        sub_col = "#94A3B8" if is_dark else "#64748B"
+        text_col = "#F8FAFC" if is_dark else "#0F172A"
+
+        self.banner.setStyleSheet(f"background: {bg_card}; border: 1px solid {border_card}; border-radius: 12px; padding: 24px;")
+        self.title.setStyleSheet(f"font-size: 24px; font-weight: 800; color: {title_col}; background: transparent;")
+        self.subtitle.setStyleSheet(f"font-size: 13px; color: {sub_col}; background: transparent;")
+
+        self.bottom_box.setStyleSheet(f"background: {bg_card}; border: 1px solid {border_card}; border-radius: 8px; padding: 16px;")
+        self.accept_check.setStyleSheet(f"font-size: 13px; font-weight: 600; color: {text_col};")
+
+        btn_bg = "#1E293B" if is_dark else "#F1F5F9"
+        btn_fg = "#38BDF8" if is_dark else "#2563EB"
+        self.btn_back.setStyleSheet(
+            f"QPushButton {{ background: {btn_bg}; color: {btn_fg}; border: 1px solid {border_card}; "
+            "border-radius: 6px; padding: 6px 14px; font-weight: 600; font-size: 12px; } "
+            "QPushButton:hover { background: #2563EB; color: white; border-color: #3B82F6; }"
+        )
+
+        self.btn_continue.setStyleSheet(
+            "QPushButton:disabled { background: #334155; color: #64748B; border: 1px solid #475569; }"
+            if is_dark else
+            "QPushButton:disabled { background: #E2E8F0; color: #94A3B8; border: 1px solid #CBD5E1; }"
+        )
+
+        self.eula_text.setHtml(f"""
+        <h3 style="color:{title_col};">DESIGN MATCHER - END USER LICENSE AGREEMENT (EULA)</h3>
+        <p><b>1. Grant of License:</b> Subject to the terms of your commercial or trial subscription, Design Matcher Software grants you a non-exclusive, non-transferable license to install and run Design Matcher on your licensed hardware devices.</p>
+        <p><b>2. Intellectual Property &amp; CAD Linework:</b> You retain 100% full ownership and copyright of all proprietary DXF CAD linework, CNC cut designs, catalogs, and images processed by the software. Design Matcher Software claims zero ownership over your files or resulting matches.</p>
+        <p><b>3. Local Offline Processing:</b> All computer vision feature extraction, DINOv2 neural embedding, and FAISS vector indexing occur entirely on your local computer hardware. Your proprietary DXF linework is never uploaded or shared with external parties.</p>
+        <p><b>4. Subscription &amp; Seat Activations:</b> Each license key enables concurrent activations up to your plan's seat limit. Online and air-gapped offline validation mechanisms verify cryptographic license signatures generated with Ed25519 asymmetric cryptography.</p>
+        <p><b>5. Disclaimer of Warranties:</b> The software is provided "AS IS", without warranty of any kind, express or implied. In no event shall the authors or copyright holders be liable for any claim or damages arising from the use of the software.</p>
+        """)
+
+        self.privacy_text.setHtml(f"""
+        <h3 style="color:{title_col};">PRIVACY NOTICE &amp; LOCAL DATA COMMITMENT</h3>
+        <p><b>1. Zero Cloud Uploads:</b> Customer photos, stencil sketches, and CAD DXF drawings processed inside Design Matcher remain on your machine. We do not store or transmit your design library.</p>
+        <p><b>2. Licensing Telemetry:</b> Periodic license synchronization transmits only your license key, a cryptographic one-way SHA-256 hardware hash, computer name, and OS version to verify active subscription status.</p>
+        <p><b>3. Zero Personal Data Diagnostics:</b> When exporting diagnostic logs for technical support, all user home paths, usernames, and license keys are automatically stripped and replaced with generic tokens.</p>
+        <p><b>4. Complete Data Sovereignty:</b> You can delete your local index, wipe search history, or perform a complete factory reset from the "Backup &amp; Privacy" page at any time.</p>
+        """)
 
     def _on_check_toggled(self, checked: bool) -> None:
         self.btn_continue.setEnabled(checked)
@@ -387,9 +699,11 @@ class LicensePage(QWidget):
 
     def __init__(self, license_manager: Any, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
+        self.setObjectName("pageRoot")
+        self.is_dark = True
         self.license_manager = license_manager
-        self.setStyleSheet(PAGE_STYLESHEET)
         self._setup_ui()
+        self.apply_theme(True)
         self.refresh()
 
     def _setup_ui(self) -> None:
@@ -398,25 +712,26 @@ class LicensePage(QWidget):
         main_layout.setSpacing(0)
 
         # Top Header
-        header = create_page_header(
+        self.header = create_page_header(
             "Activation & Subscription Management",
             "View active plan, seat allocations, machine hardware fingerprint, and offline licensing tools.",
             on_back=self.back_requested.emit,
+            is_dark=self.is_dark,
         )
-        main_layout.addWidget(header)
+        main_layout.addWidget(self.header)
 
         # Body Scroll Area
         scroll = QScrollArea(self)
         scroll.setWidgetResizable(True)
         body = QWidget()
+        body.setObjectName("pageBody")
         body_layout = QVBoxLayout(body)
         body_layout.setContentsMargins(30, 24, 30, 24)
         body_layout.setSpacing(20)
 
         # 1. Status Overview Card
-        status_card = QFrame()
-        status_card.setStyleSheet("background: #0F172A; border: 1px solid #1E293B; border-radius: 10px; padding: 20px;")
-        sc_layout = QGridLayout(status_card)
+        self.status_card = QFrame()
+        sc_layout = QGridLayout(self.status_card)
         sc_layout.setHorizontalSpacing(30)
         sc_layout.setVerticalSpacing(12)
 
@@ -450,12 +765,11 @@ class LicensePage(QWidget):
         hw_row.addStretch()
         sc_layout.addLayout(hw_row, 4, 1)
 
-        body_layout.addWidget(status_card)
+        body_layout.addWidget(self.status_card)
 
         # 2. Online Activation Section
-        act_box = QGroupBox("Activate or Renew License")
-        act_box.setStyleSheet("QGroupBox { font-size: 14px; font-weight: 700; color: #38BDF8; margin-top: 10px; }")
-        act_layout = QVBoxLayout(act_box)
+        self.act_box = QGroupBox("Activate or Renew License")
+        act_layout = QVBoxLayout(self.act_box)
         act_layout.setContentsMargins(16, 20, 16, 16)
         act_layout.setSpacing(10)
 
@@ -483,20 +797,18 @@ class LicensePage(QWidget):
         btn_row.addStretch()
         act_layout.addLayout(btn_row)
 
-        body_layout.addWidget(act_box)
+        body_layout.addWidget(self.act_box)
 
         # 3. Air-Gapped Offline Licensing
-        off_box = QGroupBox("Air-Gapped Offline Activation")
-        off_box.setStyleSheet("QGroupBox { font-size: 14px; font-weight: 700; color: #38BDF8; margin-top: 10px; }")
-        off_layout = QVBoxLayout(off_box)
+        self.off_box = QGroupBox("Air-Gapped Offline Activation")
+        off_layout = QVBoxLayout(self.off_box)
         off_layout.setContentsMargins(16, 20, 16, 16)
         off_layout.setSpacing(10)
 
-        off_desc = QLabel("If this computer has no internet access, generate an activation request file (.dmreq), "
-                          "sign it on your admin portal, and import the signed license file (.lic).")
-        off_desc.setStyleSheet("color: #94A3B8; font-size: 12px;")
-        off_desc.setWordWrap(True)
-        off_layout.addWidget(off_desc)
+        self.off_desc = QLabel("If this computer has no internet access, generate an activation request file (.dmreq), "
+                               "sign it on your admin portal, and import the signed license file (.lic).")
+        self.off_desc.setWordWrap(True)
+        off_layout.addWidget(self.off_desc)
 
         off_btn_row = QHBoxLayout()
         btn_export = QPushButton("📤 Export Request File (.dmreq)...")
@@ -511,11 +823,30 @@ class LicensePage(QWidget):
         off_btn_row.addStretch()
         off_layout.addLayout(off_btn_row)
 
-        body_layout.addWidget(off_box)
+        body_layout.addWidget(self.off_box)
         body_layout.addStretch()
 
         scroll.setWidget(body)
         main_layout.addWidget(scroll, 1)
+
+    def apply_theme(self, is_dark: bool) -> None:
+        self.is_dark = is_dark
+        self.setStyleSheet(get_page_stylesheet(is_dark))
+        if hasattr(self, "header") and hasattr(self.header, "update_theme"):
+            self.header.update_theme(is_dark)
+
+        bg_card = "#1E293B" if is_dark else "#FFFFFF"
+        border_card = "#334155" if is_dark else "#CBD5E1"
+        self.status_card.setStyleSheet(f"background: {bg_card}; border: 1px solid {border_card}; border-radius: 10px; padding: 20px;")
+
+        head_color = "#38BDF8" if is_dark else "#0284C7"
+        desc_color = "#94A3B8" if is_dark else "#64748B"
+        if hasattr(self, "act_box"):
+            self.act_box.setStyleSheet(f"QGroupBox {{ font-size: 14px; font-weight: 700; color: {head_color}; background-color: {bg_card}; border: 1px solid {border_card}; border-radius: 8px; margin-top: 10px; padding-top: 14px; }} QGroupBox::title {{ subcontrol-origin: margin; left: 12px; padding: 0 4px; }}")
+        if hasattr(self, "off_box"):
+            self.off_box.setStyleSheet(f"QGroupBox {{ font-size: 14px; font-weight: 700; color: {head_color}; background-color: {bg_card}; border: 1px solid {border_card}; border-radius: 8px; margin-top: 10px; padding-top: 14px; }} QGroupBox::title {{ subcontrol-origin: margin; left: 12px; padding: 0 4px; }}")
+        if hasattr(self, "off_desc"):
+            self.off_desc.setStyleSheet(f"color: {desc_color}; font-size: 12px;")
 
     def refresh(self) -> None:
         """Reloads license details from local manager."""
@@ -627,13 +958,16 @@ class SettingsPage(QWidget):
     """Application settings for watched folders, thresholds, data location, language, and theme."""
     back_requested = Signal()
     settings_saved = Signal()
+    theme_changed = Signal(str)
 
     def __init__(self, db: Any, catalog_index: Any, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
+        self.setObjectName("pageRoot")
+        self.is_dark = True
         self.db = db
         self.catalog_index = catalog_index
-        self.setStyleSheet(PAGE_STYLESHEET)
         self._setup_ui()
+        self.apply_theme(True)
         self._load_values()
 
     def _setup_ui(self) -> None:
@@ -641,16 +975,18 @@ class SettingsPage(QWidget):
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
 
-        header = create_page_header(
+        self.header = create_page_header(
             "Application Settings",
             "Configure watched DXF/PDF catalog directories, similarity thresholds, and storage paths.",
             on_back=self.back_requested.emit,
+            is_dark=self.is_dark,
         )
-        main_layout.addWidget(header)
+        main_layout.addWidget(self.header)
 
         scroll = QScrollArea(self)
         scroll.setWidgetResizable(True)
         body = QWidget()
+        body.setObjectName("pageBody")
         body_layout = QVBoxLayout(body)
         body_layout.setContentsMargins(30, 24, 30, 24)
         body_layout.setSpacing(20)
@@ -720,7 +1056,7 @@ class SettingsPage(QWidget):
         body_layout.addWidget(thresh_box)
 
         # 3. Data Storage & Language
-        pref_box = QGroupBox("Storage & Language")
+        pref_box = QGroupBox("Storage, Language & Theme")
         pref_layout = QGridLayout(pref_box)
         pref_layout.setContentsMargins(16, 20, 16, 16)
         pref_layout.setHorizontalSpacing(24)
@@ -744,7 +1080,8 @@ class SettingsPage(QWidget):
 
         pref_layout.addWidget(QLabel("Interface Theme:"), 2, 0)
         self.combo_theme = QComboBox()
-        self.combo_theme.addItems(["Modern Slate Dark (Default)", "High-Contrast Dark", "System Default"])
+        self.combo_theme.addItems(["🌙 Dark Theme (Default)", "☀️ Light Theme"])
+        self.combo_theme.currentIndexChanged.connect(self._on_theme_combo_changed)
         pref_layout.addWidget(self.combo_theme, 2, 1)
 
         body_layout.addWidget(pref_box)
@@ -768,6 +1105,21 @@ class SettingsPage(QWidget):
         scroll.setWidget(body)
         main_layout.addWidget(scroll, 1)
 
+    def apply_theme(self, is_dark: bool) -> None:
+        self.is_dark = is_dark
+        self.setStyleSheet(get_page_stylesheet(is_dark))
+        if hasattr(self, "header") and hasattr(self.header, "update_theme"):
+            self.header.update_theme(is_dark)
+
+        accent_col = "#38BDF8" if is_dark else "#0284C7"
+        muted_col = "#94A3B8" if is_dark else "#64748B"
+        self.lbl_thresh_val.setStyleSheet(f"font-weight: 700; color: {accent_col}; min-width: 40px;")
+        self.lbl_data_path.setStyleSheet(f"font-family: monospace; font-size: 11px; color: {muted_col};")
+
+    def _on_theme_combo_changed(self, index: int) -> None:
+        theme_str = "light" if index == 1 else "dark"
+        self.theme_changed.emit(theme_str)
+
     def _load_values(self) -> None:
         if not self.db:
             return
@@ -778,6 +1130,14 @@ class SettingsPage(QWidget):
         topk = int(self.db.get_setting("top_k", "30"))
         self.spin_topk.setValue(topk)
 
+        theme_val = self.db.get_setting("interface_theme", "dark").lower()
+        self.combo_theme.blockSignals(True)
+        if "light" in theme_val:
+            self.combo_theme.setCurrentIndex(1)
+        else:
+            self.combo_theme.setCurrentIndex(0)
+        self.combo_theme.blockSignals(False)
+
     def _save_values(self, show_alert: bool = True) -> None:
         if not self.db:
             return
@@ -785,6 +1145,11 @@ class SettingsPage(QWidget):
         self.db.set_setting("similarity_threshold", str(self.slider_thresh.value() / 100.0))
         self.db.set_setting("top_k", str(self.spin_topk.value()))
         self.db.set_setting("language", self.combo_lang.currentText())
+
+        theme_str = "light" if self.combo_theme.currentIndex() == 1 else "dark"
+        self.db.set_setting("interface_theme", theme_str)
+        self.theme_changed.emit(theme_str)
+
         if show_alert:
             QMessageBox.information(self, "Saved", "Settings saved successfully!")
         self.settings_saved.emit()
@@ -1107,52 +1472,39 @@ class HelpPage(QWidget):
 
     def __init__(self, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
-        self.setStyleSheet(PAGE_STYLESHEET)
+        self.setObjectName("pageRoot")
+        self.is_dark = True
         self._setup_ui()
+        self.apply_theme(True)
 
     def _setup_ui(self) -> None:
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
 
-        header = create_page_header(
+        self.header = create_page_header(
             "Help, Documentation & Troubleshooting",
             "Step-by-step user guide and real-time local engine diagnostic checks.",
             on_back=self.back_requested.emit,
+            is_dark=self.is_dark,
         )
-        main_layout.addWidget(header)
+        main_layout.addWidget(self.header)
 
-        tabs = QTabWidget(self)
+        self.tabs = QTabWidget(self)
 
         # Tab 1: Quick Start Guide
         t1 = QWidget()
+        t1.setObjectName("pageBody")
         l1 = QVBoxLayout(t1)
         l1.setContentsMargins(24, 20, 24, 20)
-        guide_text = QTextEdit()
-        guide_text.setReadOnly(True)
-        guide_text.setHtml("""
-        <h2 style="color:#38BDF8;">Design Matcher Quick Start Guide</h2>
-        <p><b>Step 1: Point to your DXF & Catalog Folders</b><br>
-        Navigate to <i>Settings</i> or <i>Catalog Manager</i> and select the folders on your computer where your CNC DXF linework drawings or PDF catalogs are located.</p>
-
-        <p><b>Step 2: Choose Your Search Mode</b><br>
-        • <b>Mode A (Customer Photo / Stencil):</b> Drop any customer phone picture, paper sketch, or screenshot into the drop area.<br>
-        • <b>Mode B (Reference DXF):</b> Drop an existing DXF file to search your library for similar cut patterns.</p>
-
-        <p><b>Step 3: Auto-Straighten & Perspective Warp</b><br>
-        Click <i>Auto-Detect Sheet</i> to automatically detect the four corners of a metal sheet or paper template, or drag the corner pins manually to remove perspective tilt.</p>
-
-        <p><b>Step 4: Vector Linework Search</b><br>
-        Click <i>Search Catalog</i>. Design Matcher tests 0°, 90°, 180°, and 270° rotations against your local library and returns the most identical cut-ready DXFs in seconds.</p>
-
-        <p><b>Step 5: Inspect in Vector Preview Page</b><br>
-        Click any result to preview its vector paths in the right-side inspector, or switch to the <i>DXF Preview</i> tab to measure dimensions, isolate layers, and export.</p>
-        """)
-        l1.addWidget(guide_text)
-        tabs.addTab(t1, "Quick Start Guide")
+        self.guide_text = QTextEdit()
+        self.guide_text.setReadOnly(True)
+        l1.addWidget(self.guide_text)
+        self.tabs.addTab(t1, "Quick Start Guide")
 
         # Tab 2: System Diagnostics
         t2 = QWidget()
+        t2.setObjectName("pageBody")
         l2 = QVBoxLayout(t2)
         l2.setContentsMargins(24, 20, 24, 20)
         l2.setSpacing(14)
@@ -1167,12 +1519,47 @@ class HelpPage(QWidget):
 
         self.txt_diag = QTextEdit()
         self.txt_diag.setReadOnly(True)
-        self.txt_diag.setHtml("<p style='color:#94A3B8;'>Click 'Run System Self-Test' above to verify local PyTorch, FAISS, ezdxf, and SQLite health.</p>")
         l2.addWidget(self.txt_diag, 1)
 
-        tabs.addTab(t2, "System Diagnostics & Troubleshooting")
+        self.tabs.addTab(t2, "System Diagnostics & Troubleshooting")
+        main_layout.addWidget(self.tabs, 1)
 
-        main_layout.addWidget(tabs, 1)
+    def apply_theme(self, is_dark: bool) -> None:
+        self.is_dark = is_dark
+        self.setStyleSheet(get_page_stylesheet(is_dark))
+        if hasattr(self, "header") and hasattr(self.header, "update_theme"):
+            self.header.update_theme(is_dark)
+
+        title_color = "#38BDF8" if is_dark else "#0284C7"
+        body_color = "#E2E8F0" if is_dark else "#1E293B"
+        bg_card = "#0B1120" if is_dark else "#FFFFFF"
+        border_card = "#1E293B" if is_dark else "#CBD5E1"
+
+        self.guide_text.setStyleSheet(
+            f"background-color: {bg_card}; border: 1px solid {border_card}; border-radius: 8px; padding: 16px; color: {body_color};"
+        )
+        self.guide_text.setHtml(f"""
+        <h2 style="color:{title_color}; margin-top:0;">Design Matcher Quick Start Guide</h2>
+        <p><b>Step 1: Point to your DXF &amp; Catalog Folders</b><br>
+        Navigate to <i>Settings</i> and specify the folders on your computer where your CNC DXF linework drawings or PDF catalogs are located.</p>
+
+        <p><b>Step 2: Choose Your Search Mode</b><br>
+        • <b>Mode A (Customer Photo / Stencil):</b> Drop any customer phone picture, paper sketch, or screenshot into the drop area.<br>
+        • <b>Mode B (Reference DXF):</b> Drop an existing DXF file to search your library for similar cut patterns.</p>
+
+        <p><b>Step 3: Auto-Straighten &amp; Perspective Warp</b><br>
+        Click <i>Auto-Detect Sheet</i> to automatically detect the four corners of a metal sheet or paper template, or drag the corner pins manually to remove perspective tilt.</p>
+
+        <p><b>Step 4: Vector Linework Search</b><br>
+        Click <i>Search Catalog</i>. Design Matcher tests 0°, 90°, 180°, and 270° rotations against your local library and returns the most identical cut-ready DXFs in seconds.</p>
+
+        <p><b>Step 5: Inspect in Vector Preview Page</b><br>
+        Click any result to preview its vector paths in the right-side inspector, or switch to the <i>DXF Preview</i> tab to measure dimensions, isolate layers, and export.</p>
+        """)
+
+        self.txt_diag.setStyleSheet(
+            f"background-color: {bg_card}; border: 1px solid {border_card}; border-radius: 8px; padding: 12px; color: {body_color}; font-family: monospace;"
+        )
 
     def _run_diagnostics(self) -> None:
         results: List[str] = []
@@ -1230,30 +1617,33 @@ class UpdatesPage(QWidget):
 
     def __init__(self, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
-        self.setStyleSheet(PAGE_STYLESHEET)
+        self.setObjectName("pageRoot")
+        self.is_dark = True
         self._setup_ui()
+        self.apply_theme(True)
 
     def _setup_ui(self) -> None:
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
 
-        header = create_page_header(
+        self.header = create_page_header(
             "Software Updates",
             "Check for application updates, view release notes, and manage update preferences.",
             on_back=self.back_requested.emit,
+            is_dark=self.is_dark,
         )
-        main_layout.addWidget(header)
+        main_layout.addWidget(self.header)
 
         body = QWidget()
+        body.setObjectName("pageBody")
         body_layout = QVBoxLayout(body)
         body_layout.setContentsMargins(30, 24, 30, 24)
         body_layout.setSpacing(18)
 
         # Version Banner
-        banner = QFrame()
-        banner.setStyleSheet("background: #0F172A; border: 1px solid #1E293B; border-radius: 10px; padding: 20px;")
-        b_layout = QHBoxLayout(banner)
+        self.banner = QFrame()
+        b_layout = QHBoxLayout(self.banner)
 
         vbox = QVBoxLayout()
         vbox.setSpacing(4)
@@ -1272,27 +1662,45 @@ class UpdatesPage(QWidget):
         btn_check.clicked.connect(self._check_updates)
         b_layout.addWidget(btn_check)
 
-        body_layout.addWidget(banner)
+        body_layout.addWidget(self.banner)
 
         # Release Notes / Changelog
-        lbl_cl = QLabel("<b>Release Notes & Version History:</b>")
-        lbl_cl.setStyleSheet("font-size: 14px; color: #38BDF8;")
-        body_layout.addWidget(lbl_cl)
+        self.lbl_cl = QLabel("<b>Release Notes & Version History:</b>")
+        body_layout.addWidget(self.lbl_cl)
 
         self.txt_changelog = QTextEdit()
         self.txt_changelog.setReadOnly(True)
-        self.txt_changelog.setHtml("""
-        <h4 style="color:#38BDF8;">v1.0.0 (Latest Release)</h4>
+        body_layout.addWidget(self.txt_changelog, 1)
+
+        main_layout.addWidget(body, 1)
+
+    def apply_theme(self, is_dark: bool) -> None:
+        self.is_dark = is_dark
+        self.setStyleSheet(get_page_stylesheet(is_dark))
+        if hasattr(self, "header") and hasattr(self.header, "update_theme"):
+            self.header.update_theme(is_dark)
+
+        bg_card = "#1E293B" if is_dark else "#FFFFFF"
+        border_card = "#334155" if is_dark else "#CBD5E1"
+        self.banner.setStyleSheet(f"background: {bg_card}; border: 1px solid {border_card}; border-radius: 10px; padding: 20px;")
+
+        head_color = "#38BDF8" if is_dark else "#0284C7"
+        body_color = "#E2E8F0" if is_dark else "#1E293B"
+        bg_input = "#0B1120" if is_dark else "#FFFFFF"
+        self.lbl_cl.setStyleSheet(f"font-size: 14px; color: {head_color};")
+        self.txt_changelog.setStyleSheet(
+            f"background-color: {bg_input}; border: 1px solid {border_card}; border-radius: 8px; padding: 12px; color: {body_color};"
+        )
+        self.txt_changelog.setHtml(f"""
+        <h4 style="color:{head_color};">v1.0.0 (Latest Commercial Release)</h4>
         <ul>
           <li>Integrated multi-rotation vector search (0°, 90°, 180°, 270°) with DINOv2 neural embeddings.</li>
           <li>Hardware-accelerated DXF Vector Preview page with CAD layer isolation, measurement tool, and Y-flip.</li>
           <li>Enterprise-grade Ed25519 subscription licensing with online and air-gapped offline activation (.dmreq/.lic).</li>
+          <li>Full support for light and dark themes with dynamic high-contrast typography.</li>
           <li>Cross-platform packaging for Windows (.exe installer) and macOS (.dmg disk image).</li>
         </ul>
         """)
-        body_layout.addWidget(self.txt_changelog, 1)
-
-        main_layout.addWidget(body, 1)
 
     def _check_updates(self) -> None:
         self.lbl_update_status.setText("Checking GitHub releases...")
@@ -1317,75 +1725,73 @@ class BackupPage(QWidget):
 
     def __init__(self, catalog_index: Any, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
+        self.setObjectName("pageRoot")
         self.catalog_index = catalog_index
-        self.setStyleSheet(PAGE_STYLESHEET)
+        self.is_dark = True
         self._setup_ui()
+        self.apply_theme(True)
 
     def _setup_ui(self) -> None:
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
 
-        header = create_page_header(
+        self.header = create_page_header(
             "Backup, Restore & Data Privacy",
             "Export data archives, restore existing backups, or wipe all local application data.",
             on_back=self.back_requested.emit,
+            is_dark=self.is_dark,
         )
-        main_layout.addWidget(header)
+        main_layout.addWidget(self.header)
 
-        scroll = QScrollArea(self)
-        scroll.setWidgetResizable(True)
-        body = QWidget()
-        body_layout = QVBoxLayout(body)
+        self.scroll = QScrollArea(self)
+        self.scroll.setWidgetResizable(True)
+        self.body = QWidget()
+        self.body.setObjectName("pageBody")
+        body_layout = QVBoxLayout(self.body)
         body_layout.setContentsMargins(30, 24, 30, 24)
         body_layout.setSpacing(20)
 
         # 1. Backup Card
-        b_box = QGroupBox("Create Data Backup")
-        b_box.setStyleSheet("QGroupBox { font-size: 14px; font-weight: 700; color: #38BDF8; }")
-        b_layout = QVBoxLayout(b_box)
+        self.b_box = QGroupBox("Create Data Backup")
+        b_layout = QVBoxLayout(self.b_box)
         b_layout.setContentsMargins(16, 20, 16, 16)
         b_layout.setSpacing(10)
 
-        b_desc = QLabel("Export all catalog databases, index files, settings, and license state into a single compressed ZIP archive.")
-        b_desc.setStyleSheet("color: #94A3B8; font-size: 12px;")
-        b_layout.addWidget(b_desc)
+        self.b_desc = QLabel("Export all catalog databases, index files, settings, and license state into a single compressed ZIP archive.")
+        b_layout.addWidget(self.b_desc)
 
         btn_export = QPushButton("📦 Export Backup Archive (.zip)...")
         btn_export.setProperty("class", "primaryBtn")
         btn_export.clicked.connect(self._create_backup)
         b_layout.addWidget(btn_export, 0, Qt.AlignmentFlag.AlignLeft)
-        body_layout.addWidget(b_box)
+        body_layout.addWidget(self.b_box)
 
         # 2. Restore Card
-        r_box = QGroupBox("Restore from Backup")
-        r_box.setStyleSheet("QGroupBox { font-size: 14px; font-weight: 700; color: #38BDF8; }")
-        r_layout = QVBoxLayout(r_box)
+        self.r_box = QGroupBox("Restore from Backup")
+        r_layout = QVBoxLayout(self.r_box)
         r_layout.setContentsMargins(16, 20, 16, 16)
         r_layout.setSpacing(10)
 
-        r_desc = QLabel("Restore your catalog indices and configurations from a previously exported ZIP backup.")
-        r_desc.setStyleSheet("color: #94A3B8; font-size: 12px;")
-        r_layout.addWidget(r_desc)
+        self.r_desc = QLabel("Restore your catalog indices and configurations from a previously exported ZIP backup.")
+        r_layout.addWidget(self.r_desc)
 
         btn_restore = QPushButton("📥 Select Backup Archive to Restore...")
         btn_restore.setProperty("class", "secondaryBtn")
         btn_restore.clicked.connect(self._restore_backup)
         r_layout.addWidget(btn_restore, 0, Qt.AlignmentFlag.AlignLeft)
-        body_layout.addWidget(r_box)
+        body_layout.addWidget(self.r_box)
 
         # 3. Privacy & "Delete My Data" Card
-        del_box = QGroupBox("Privacy Controls & Delete My Data")
-        del_box.setStyleSheet("QGroupBox { font-size: 14px; font-weight: 700; color: #EF4444; }")
-        del_layout = QVBoxLayout(del_box)
+        self.del_box = QGroupBox("Privacy Controls & Delete My Data")
+        del_layout = QVBoxLayout(self.del_box)
         del_layout.setContentsMargins(16, 20, 16, 16)
         del_layout.setSpacing(12)
 
-        del_desc = QLabel("Complying with privacy rights and data minimization: your source DXF and PDF files are NEVER deleted. "
-                          "These options only remove locally generated indices, thumbnails, and cache.")
-        del_desc.setStyleSheet("color: #94A3B8; font-size: 12px;")
-        del_desc.setWordWrap(True)
-        del_layout.addWidget(del_desc)
+        self.del_desc = QLabel("Complying with privacy rights and data minimization: your source DXF and PDF files are NEVER deleted. "
+                               "These options only remove locally generated indices, thumbnails, and cache.")
+        self.del_desc.setWordWrap(True)
+        del_layout.addWidget(self.del_desc)
 
         btn_clear_index = QPushButton("⚠️ Reset Catalog Index & Embeddings (Keeps Settings)")
         btn_clear_index.setProperty("class", "secondaryBtn")
@@ -1397,11 +1803,30 @@ class BackupPage(QWidget):
         btn_factory.clicked.connect(self._factory_reset)
         del_layout.addWidget(btn_factory, 0, Qt.AlignmentFlag.AlignLeft)
 
-        body_layout.addWidget(del_box)
+        body_layout.addWidget(self.del_box)
         body_layout.addStretch()
 
-        scroll.setWidget(body)
-        main_layout.addWidget(scroll, 1)
+        self.scroll.setWidget(self.body)
+        main_layout.addWidget(self.scroll, 1)
+
+    def apply_theme(self, is_dark: bool) -> None:
+        self.is_dark = is_dark
+        self.setStyleSheet(get_page_stylesheet(is_dark))
+        if hasattr(self, "header") and hasattr(self.header, "update_theme"):
+            self.header.update_theme(is_dark)
+
+        head_color = "#38BDF8" if is_dark else "#0284C7"
+        desc_color = "#94A3B8" if is_dark else "#64748B"
+        border_card = "#334155" if is_dark else "#CBD5E1"
+        bg_card = "#1E293B" if is_dark else "#FFFFFF"
+
+        self.b_box.setStyleSheet(f"QGroupBox {{ font-size: 14px; font-weight: 700; color: {head_color}; background-color: {bg_card}; border: 1px solid {border_card}; border-radius: 8px; margin-top: 10px; padding-top: 14px; }} QGroupBox::title {{ subcontrol-origin: margin; left: 12px; padding: 0 4px; }}")
+        self.r_box.setStyleSheet(f"QGroupBox {{ font-size: 14px; font-weight: 700; color: {head_color}; background-color: {bg_card}; border: 1px solid {border_card}; border-radius: 8px; margin-top: 10px; padding-top: 14px; }} QGroupBox::title {{ subcontrol-origin: margin; left: 12px; padding: 0 4px; }}")
+        self.del_box.setStyleSheet(f"QGroupBox {{ font-size: 14px; font-weight: 700; color: #EF4444; background-color: {bg_card}; border: 1px solid {border_card}; border-radius: 8px; margin-top: 10px; padding-top: 14px; }} QGroupBox::title {{ subcontrol-origin: margin; left: 12px; padding: 0 4px; }}")
+
+        self.b_desc.setStyleSheet(f"color: {desc_color}; font-size: 12px;")
+        self.r_desc.setStyleSheet(f"color: {desc_color}; font-size: 12px;")
+        self.del_desc.setStyleSheet(f"color: {desc_color}; font-size: 12px;")
 
     def _perform_backup(self, out_path: str, show_alert: bool = True) -> str:
         if not self.catalog_index or not self.catalog_index.data_dir.exists():
@@ -1469,175 +1894,353 @@ class BackupPage(QWidget):
 
 
 # ==============================================================================
-# 9. AboutPage (About Page)
+# 9. AboutPage (About Us & Technical Specifications)
 # ==============================================================================
 
 class AboutPage(QWidget):
-    """Application metadata, copyright, support info, and third-party open source licenses viewer."""
+    """Application metadata, company story, founders, technical specifications, and third-party licenses."""
     back_requested = Signal()
 
     def __init__(self, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
-        self.setStyleSheet(PAGE_STYLESHEET)
+        self.setObjectName("pageRoot")
+        self.is_dark = True
         self._setup_ui()
+        self.apply_theme(True)
 
     def _setup_ui(self) -> None:
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
 
-        header = create_page_header(
-            "About Design Matcher",
-            "Software information, technical specifications, and third-party open source licenses.",
+        self.header = create_page_header(
+            "About Design Matcher & Technical Specs",
+            "Software architecture, founding team, and open-source licensing information.",
             on_back=self.back_requested.emit,
+            is_dark=self.is_dark,
         )
-        main_layout.addWidget(header)
+        main_layout.addWidget(self.header)
 
-        tabs = QTabWidget(self)
+        self.tabs = QTabWidget(self)
 
-        # Tab 1: Overview
+        # Tab 1: About Us & Software Overview
         t1 = QWidget()
+        t1.setObjectName("pageBody")
         l1 = QVBoxLayout(t1)
-        l1.setContentsMargins(30, 24, 30, 24)
+        l1.setContentsMargins(28, 20, 28, 20)
         l1.setSpacing(14)
 
         self.about_text = QTextEdit()
         self.about_text.setReadOnly(True)
-        self.about_text.setMaximumHeight(110)
-        self.about_text.setStyleSheet("background-color: #0F172A; border: 1px solid #334155; border-radius: 6px; padding: 10px; color: #F8FAFC;")
-        self.about_text.setHtml("""
-        <h2 style="color:#38BDF8; margin: 0 0 6px 0;">Design Matcher Desktop</h2>
-        <p style="font-size: 13px; color: #94A3B8; margin: 0 0 6px 0;"><b>Professional CNC Linework &amp; Cut-Design Matching Engine</b></p>
-        <p style="font-size: 12px; color: #CBD5E1; margin: 0;">Enterprise visual and vector pattern matching system engineered for CNC sheet metal cutting, fabrication shops, and CAD/CAM workflows.</p>
-        """)
+        self.about_text.setMaximumHeight(150)
         l1.addWidget(self.about_text)
 
-        grid = QGridLayout()
+        # Founders & Key Team Card
+        self.founders_box = QGroupBox("Founding Team & Engineering Leadership")
+        f_layout = QGridLayout(self.founders_box)
+        f_layout.setContentsMargins(18, 22, 18, 16)
+        f_layout.setHorizontalSpacing(24)
+        f_layout.setVerticalSpacing(12)
+
+        lbl_f1 = QLabel("<b>Suhel Mulani</b><br><span style='font-size:12px; color:#38BDF8;'>Founder &amp; Chief Technology Officer</span><br>"
+                        "<span style='font-size:11px;'>Email: <a href='mailto:suhel.mulani90@gmail.com'>suhel.mulani90@gmail.com</a> | Mob: +91 9422602386</span>")
+        lbl_f1.setWordWrap(True)
+        lbl_f1.setOpenExternalLinks(True)
+        f_layout.addWidget(lbl_f1, 0, 0)
+
+        lbl_f2 = QLabel("<b>Nihal Mulani</b><br><span style='font-size:12px; color:#38BDF8;'>Co-Founder &amp; Operations Director</span><br>"
+                        "<span style='font-size:11px;'>Email: <a href='mailto:nihal.mulani@gmail.com'>nihal.mulani@gmail.com</a> | Mob: +91 9423591358</span>")
+        lbl_f2.setWordWrap(True)
+        lbl_f2.setOpenExternalLinks(True)
+        f_layout.addWidget(lbl_f2, 0, 1)
+
+        l1.addWidget(self.founders_box)
+
+        # Tech Specs Card
+        self.specs_box = QGroupBox("Engine & Technical Architecture Specifications")
+        grid = QGridLayout(self.specs_box)
+        grid.setContentsMargins(18, 22, 18, 16)
         grid.setHorizontalSpacing(24)
         grid.setVerticalSpacing(8)
-        grid.addWidget(QLabel("<b>Version:</b>"), 0, 0)
-        grid.addWidget(QLabel("1.0.0 (Build 2026.10)"), 0, 1)
 
-        grid.addWidget(QLabel("<b>Platform:</b>"), 1, 0)
-        grid.addWidget(QLabel(f"{platform.system()} {platform.machine()}"), 1, 1)
+        grid.addWidget(QLabel("<b>Application Version:</b>"), 0, 0)
+        grid.addWidget(QLabel("1.0.0 (Commercial Production Build 2026.10)"), 0, 1)
 
-        grid.addWidget(QLabel("<b>Python Runtime:</b>"), 2, 0)
-        grid.addWidget(QLabel(sys.version.split()[0]), 2, 1)
+        grid.addWidget(QLabel("<b>Target CNC Machinery:</b>"), 1, 0)
+        grid.addWidget(QLabel("Fiber Laser, CO2 Laser, Plasma Cutters, Waterjet &amp; CNC Routers"), 1, 1)
 
-        grid.addWidget(QLabel("<b>GUI Framework:</b>"), 3, 0)
+        grid.addWidget(QLabel("<b>Vector CAD Support:</b>"), 2, 0)
+        grid.addWidget(QLabel("DXF (AutoCAD R12 through 2018 linework, polylines, arcs, circles, splines)"), 2, 1)
+
+        grid.addWidget(QLabel("<b>Computer Vision Model:</b>"), 3, 0)
+        grid.addWidget(QLabel("Local DINOv2 Deep Feature Extractor with FAISS Inverted Multi-Index"), 3, 1)
+
+        grid.addWidget(QLabel("<b>Privacy Architecture:</b>"), 4, 0)
+        grid.addWidget(QLabel("100% On-Device Local Inference (Zero CAD/photo cloud uploads)"), 4, 1)
+
+        grid.addWidget(QLabel("<b>System Runtime:</b>"), 5, 0)
         from PySide6 import __version__ as pyside_ver
-        grid.addWidget(QLabel(f"PySide6 Qt v{pyside_ver}"), 3, 1)
+        grid.addWidget(QLabel(f"PySide6 Qt v{pyside_ver} on Python {sys.version.split()[0]} ({platform.system()} {platform.machine()})"), 5, 1)
 
-        grid.addWidget(QLabel("<b>Support:</b>"), 4, 0)
-        grid.addWidget(QLabel("<a href='mailto:support@designmatcher.com' style='color:#38BDF8;'>support@designmatcher.com</a>"), 4, 1)
-
-        l1.addLayout(grid)
+        l1.addWidget(self.specs_box)
         l1.addStretch()
-        tabs.addTab(t1, "Application Overview")
+        self.tabs.addTab(t1, "About Us & Overview")
 
         # Tab 2: Third-Party Licenses
         t2 = QWidget()
+        t2.setObjectName("pageBody")
         l2 = QVBoxLayout(t2)
         l2.setContentsMargins(20, 16, 20, 16)
         self.lic_text = QTextEdit()
         self.lic_text.setReadOnly(True)
         self.lic_text.setHtml("""
         <h3 style="color:#38BDF8;">Third-Party Open-Source Software Licenses</h3>
-        <p>Design Matcher utilizes the following open-source libraries:</p>
+        <p>Design Matcher Desktop proudly incorporates and adheres to the following open-source licenses:</p>
         <ul>
-          <li><b>PySide6 (Qt 6):</b> LGPLv3 - The Qt Company (<a href='https://www.qt.io' style='color:#38BDF8;'>qt.io</a>)</li>
-          <li><b>ezdxf:</b> MIT License - Manfred Moitzi (<a href='https://ezdxf.mozman.at' style='color:#38BDF8;'>mozman.at</a>)</li>
-          <li><b>PyTorch & Torchvision:</b> BSD-style License - PyTorch Foundation (<a href='https://pytorch.org' style='color:#38BDF8;'>pytorch.org</a>)</li>
-          <li><b>Transformers:</b> Apache License 2.0 - Hugging Face (<a href='https://huggingface.co' style='color:#38BDF8;'>huggingface.co</a>)</li>
-          <li><b>FAISS:</b> MIT License - Meta AI Research (<a href='https://github.com/facebookresearch/faiss' style='color:#38BDF8;'>facebookresearch/faiss</a>)</li>
-          <li><b>OpenCV:</b> Apache License 2.0 - OpenCV Team (<a href='https://opencv.org' style='color:#38BDF8;'>opencv.org</a>)</li>
-          <li><b>pypdfium2:</b> Apache 2.0 / BSD 3-Clause - Mara (<a href='https://github.com/pypdfium2-team/pypdfium2' style='color:#38BDF8;'>github.com</a>)</li>
-          <li><b>Cryptography:</b> Apache 2.0 / BSD - Python Cryptographic Authority (<a href='https://cryptography.io' style='color:#38BDF8;'>cryptography.io</a>)</li>
-          <li><b>Shapely:</b> BSD 3-Clause - Sean Gillies & Shapely contributors (<a href='https://shapely.readthedocs.io' style='color:#38BDF8;'>readthedocs.io</a>)</li>
+          <li><b>PySide6 (Qt 6):</b> LGPLv3 - The Qt Company (<a href='https://www.qt.io'>qt.io</a>)</li>
+          <li><b>ezdxf:</b> MIT License - Manfred Moitzi (<a href='https://ezdxf.mozman.at'>mozman.at</a>)</li>
+          <li><b>PyTorch &amp; Torchvision:</b> BSD-style License - PyTorch Foundation (<a href='https://pytorch.org'>pytorch.org</a>)</li>
+          <li><b>Transformers:</b> Apache License 2.0 - Hugging Face (<a href='https://huggingface.co'>huggingface.co</a>)</li>
+          <li><b>FAISS:</b> MIT License - Meta AI Research (<a href='https://github.com/facebookresearch/faiss'>facebookresearch/faiss</a>)</li>
+          <li><b>OpenCV:</b> Apache License 2.0 - OpenCV Team (<a href='https://opencv.org'>opencv.org</a>)</li>
+          <li><b>pypdfium2:</b> Apache 2.0 / BSD 3-Clause - Mara (<a href='https://github.com/pypdfium2-team/pypdfium2'>github.com</a>)</li>
+          <li><b>Cryptography:</b> Apache 2.0 / BSD - Python Cryptographic Authority (<a href='https://cryptography.io'>cryptography.io</a>)</li>
+          <li><b>Shapely:</b> BSD 3-Clause - Sean Gillies &amp; Shapely contributors (<a href='https://shapely.readthedocs.io'>readthedocs.io</a>)</li>
         </ul>
+        <p style="color:#94A3B8; font-size:11px;">All trademarks, service marks, and company names are the property of their respective owners.</p>
         """)
         l2.addWidget(self.lic_text)
-        tabs.addTab(t2, "Third-Party Licenses")
+        self.tabs.addTab(t2, "Third-Party Licenses")
 
-        main_layout.addWidget(tabs, 1)
+        main_layout.addWidget(self.tabs, 1)
+
+    def apply_theme(self, is_dark: bool) -> None:
+        self.is_dark = is_dark
+        self.setStyleSheet(get_page_stylesheet(is_dark))
+        if hasattr(self, "header") and hasattr(self.header, "update_theme"):
+            self.header.update_theme(is_dark)
+
+        title_color = "#38BDF8" if is_dark else "#0284C7"
+        sub_color = "#94A3B8" if is_dark else "#64748B"
+        body_color = "#E2E8F0" if is_dark else "#1E293B"
+        bg_card = "#0B1120" if is_dark else "#FFFFFF"
+        border_card = "#1E293B" if is_dark else "#CBD5E1"
+
+        self.about_text.setStyleSheet(
+            f"background-color: {bg_card}; border: 1px solid {border_card}; border-radius: 8px; padding: 12px; color: {body_color};"
+        )
+        self.about_text.setHtml(f"""
+        <h2 style="color:{title_color}; margin: 0 0 6px 0;">Design Matcher Desktop</h2>
+        <p style="font-size: 13px; color: {sub_color}; margin: 0 0 8px 0;"><b>Professional CNC Linework &amp; Cut-Design Matching Engine</b></p>
+        <p style="font-size: 12px; color: {body_color}; margin: 0; line-height: 1.5;">
+        Engineered specifically for laser cutting workshops, CNC sheet metal fabricators, interior stencil/jali manufacturers, and architectural designers. 
+        Design Matcher eliminates hours of manual catalog flipping by allowing fabricators to match customer photos against thousands of CAD DXF drawings and PDF catalog pages in under 10 seconds.
+        </p>
+        """)
+
+        self.lic_text.setStyleSheet(
+            f"background-color: {bg_card}; border: 1px solid {border_card}; border-radius: 8px; padding: 12px; color: {body_color};"
+        )
 
 
 # ==============================================================================
-# 10. SupportPage (Contact Support & Anonymized Log Exporter)
+# 10. ContactPage (Contact Us & Technical Support)
 # ==============================================================================
 
-class SupportPage(QWidget):
-    """Support contact composer and automated zero-PII diagnostic log exporter."""
+class ContactPage(QWidget):
+    """
+    Dedicated Contact Us and Technical Support page featuring:
+    - Primary Contact: Suhel Mulani (suhel.mulani90@gmail.com, 9422602386)
+    - Alternate Contact: Nihal Mulani (nihal.mulani@gmail.com, 9423591358)
+    - Quick Copy, Direct Email, and WhatsApp / Phone Call actions
+    - Interactive Support Request / Inquiry Composer
+    - Automated Zero-PII Sanitized Diagnostic Exporter
+    """
     back_requested = Signal()
 
     def __init__(self, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
-        self.setStyleSheet(PAGE_STYLESHEET)
+        self.setObjectName("pageRoot")
+        self.is_dark = True
         self._setup_ui()
+        self.apply_theme(True)
 
     def _setup_ui(self) -> None:
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
 
-        header = create_page_header(
-            "Contact Support & Report a Problem",
-            "Send an inquiry or export an anonymized diagnostic report with zero personal data.",
+        self.header = create_page_header(
+            "Contact Us & Technical Support",
+            "Direct contact with founders Suhel Mulani and Nihal Mulani, inquiry composer, and zero-PII diagnostic tools.",
             on_back=self.back_requested.emit,
+            is_dark=self.is_dark,
         )
-        main_layout.addWidget(header)
+        main_layout.addWidget(self.header)
 
-        scroll = QScrollArea(self)
-        scroll.setWidgetResizable(True)
-        body = QWidget()
-        body_layout = QVBoxLayout(body)
-        body_layout.setContentsMargins(30, 24, 30, 24)
+        self.scroll = QScrollArea(self)
+        self.scroll.setWidgetResizable(True)
+        self.body = QWidget()
+        self.body.setObjectName("pageBody")
+        body_layout = QVBoxLayout(self.body)
+        body_layout.setContentsMargins(30, 20, 30, 24)
         body_layout.setSpacing(18)
 
-        # 1. Report Composer Card
-        comp_box = QGroupBox("Report a Problem / Feature Request")
-        comp_box.setStyleSheet("QGroupBox { font-size: 14px; font-weight: 700; color: #38BDF8; }")
-        comp_layout = QGridLayout(comp_box)
-        comp_layout.setContentsMargins(16, 20, 16, 16)
+        # 1. Direct Founders Contact Cards (2 Columns)
+        self.contacts_box = QGroupBox("Direct Founder & Engineering Contacts")
+        c_layout = QGridLayout(self.contacts_box)
+        c_layout.setContentsMargins(18, 22, 18, 16)
+        c_layout.setHorizontalSpacing(20)
+        c_layout.setVerticalSpacing(14)
+
+        # Card 1: Suhel Mulani
+        self.card1 = QFrame()
+        self.card1.setObjectName("contactSubCard")
+        l_c1 = QVBoxLayout(self.card1)
+        l_c1.setContentsMargins(16, 14, 16, 14)
+        l_c1.setSpacing(8)
+
+        role1 = QLabel("👑 <b>Founder &amp; Lead Engineer</b>")
+        role1.setStyleSheet("color: #38BDF8; font-size: 12px; font-weight: 700;")
+        name1 = QLabel("<span style='font-size:16px; font-weight:800;'>Suhel Mulani</span>")
+        email1 = QLabel("✉️ <b>Email:</b> suhel.mulani90@gmail.com")
+        mob1 = QLabel("📱 <b>Mobile:</b> +91 9422602386")
+        hours1 = QLabel("🕒 Available: Mon–Sun, 9:00 AM – 10:00 PM IST")
+        hours1.setStyleSheet("color: #94A3B8; font-size: 11px;")
+
+        l_c1.addWidget(role1)
+        l_c1.addWidget(name1)
+        l_c1.addWidget(email1)
+        l_c1.addWidget(mob1)
+        l_c1.addWidget(hours1)
+
+        row_act1 = QHBoxLayout()
+        row_act1.setSpacing(8)
+        btn_copy_email1 = QPushButton("📋 Copy Email")
+        btn_copy_email1.setProperty("class", "secondaryBtn")
+        btn_copy_email1.clicked.connect(lambda: self._copy_to_clip("suhel.mulani90@gmail.com", "Suhel Mulani's email"))
+        row_act1.addWidget(btn_copy_email1)
+
+        btn_mail1 = QPushButton("✉️ Send Email")
+        btn_mail1.setProperty("class", "primaryBtn")
+        btn_mail1.clicked.connect(lambda: self._open_email("suhel.mulani90@gmail.com", "Inquiry for Suhel Mulani"))
+        row_act1.addWidget(btn_mail1)
+
+        btn_copy_mob1 = QPushButton("📋 Copy Mobile")
+        btn_copy_mob1.setProperty("class", "secondaryBtn")
+        btn_copy_mob1.clicked.connect(lambda: self._copy_to_clip("9422602386", "Suhel Mulani's mobile number"))
+        row_act1.addWidget(btn_copy_mob1)
+
+        btn_wa1 = QPushButton("💬 WhatsApp / Call")
+        btn_wa1.setProperty("class", "secondaryBtn")
+        btn_wa1.clicked.connect(lambda: self._open_wa("919422602386"))
+        row_act1.addWidget(btn_wa1)
+        row_act1.addStretch()
+
+        l_c1.addLayout(row_act1)
+        c_layout.addWidget(self.card1, 0, 0)
+
+        # Card 2: Nihal Mulani
+        self.card2 = QFrame()
+        self.card2.setObjectName("contactSubCard")
+        l_c2 = QVBoxLayout(self.card2)
+        l_c2.setContentsMargins(16, 14, 16, 14)
+        l_c2.setSpacing(8)
+
+        role2 = QLabel("⚙️ <b>Co-Founder &amp; Operations</b>")
+        role2.setStyleSheet("color: #34D399; font-size: 12px; font-weight: 700;")
+        name2 = QLabel("<span style='font-size:16px; font-weight:800;'>Nihal Mulani</span>")
+        email2 = QLabel("✉️ <b>Email:</b> nihal.mulani@gmail.com")
+        mob2 = QLabel("📱 <b>Mobile:</b> +91 9423591358")
+        hours2 = QLabel("🕒 Available: Mon–Sun, 9:00 AM – 10:00 PM IST")
+        hours2.setStyleSheet("color: #94A3B8; font-size: 11px;")
+
+        l_c2.addWidget(role2)
+        l_c2.addWidget(name2)
+        l_c2.addWidget(email2)
+        l_c2.addWidget(mob2)
+        l_c2.addWidget(hours2)
+
+        row_act2 = QHBoxLayout()
+        row_act2.setSpacing(8)
+        btn_copy_email2 = QPushButton("📋 Copy Email")
+        btn_copy_email2.setProperty("class", "secondaryBtn")
+        btn_copy_email2.clicked.connect(lambda: self._copy_to_clip("nihal.mulani@gmail.com", "Nihal Mulani's email"))
+        row_act2.addWidget(btn_copy_email2)
+
+        btn_mail2 = QPushButton("✉️ Send Email")
+        btn_mail2.setProperty("class", "primaryBtn")
+        btn_mail2.clicked.connect(lambda: self._open_email("nihal.mulani@gmail.com", "Inquiry for Nihal Mulani"))
+        row_act2.addWidget(btn_mail2)
+
+        btn_copy_mob2 = QPushButton("📋 Copy Mobile")
+        btn_copy_mob2.setProperty("class", "secondaryBtn")
+        btn_copy_mob2.clicked.connect(lambda: self._copy_to_clip("9423591358", "Nihal Mulani's mobile number"))
+        row_act2.addWidget(btn_copy_mob2)
+
+        btn_wa2 = QPushButton("💬 WhatsApp / Call")
+        btn_wa2.setProperty("class", "secondaryBtn")
+        btn_wa2.clicked.connect(lambda: self._open_wa("919423591358"))
+        row_act2.addWidget(btn_wa2)
+        row_act2.addStretch()
+
+        l_c2.addLayout(row_act2)
+        c_layout.addWidget(self.card2, 0, 1)
+
+        body_layout.addWidget(self.contacts_box)
+
+        # 2. Report Composer Card
+        self.comp_box = QGroupBox("Send Message or Report a Problem")
+        comp_layout = QGridLayout(self.comp_box)
+        comp_layout.setContentsMargins(18, 22, 18, 16)
         comp_layout.setHorizontalSpacing(20)
         comp_layout.setVerticalSpacing(12)
 
-        comp_layout.addWidget(QLabel("Issue Category:"), 0, 0)
+        comp_layout.addWidget(QLabel("Inquiry Category:"), 0, 0)
         self.combo_cat = QComboBox()
         self.combo_cat.addItems([
-            "Search Accuracy / Matching Question",
-            "DXF Ingestion / Linework Parsing Error",
-            "Software Crash or Performance Lag",
-            "Licensing & Activation Assistance",
-            "Feature Suggestion / Enhancement",
+            "Search Accuracy & Linework Matching",
+            "DXF Ingestion & CAD Linework Parsing",
+            "Software Activation & License Support",
+            "Workshop Custom Feature Request",
+            "Multi-Seat Volume Commercial Pricing",
+            "Software Crash or Performance Optimization",
         ])
         comp_layout.addWidget(self.combo_cat, 0, 1)
 
-        comp_layout.addWidget(QLabel("Problem Summary:"), 1, 0)
+        comp_layout.addWidget(QLabel("Problem / Subject:"), 1, 0)
         self.txt_summary = QLineEdit()
-        self.txt_summary.setPlaceholderText("Brief description of the issue...")
+        self.txt_summary.setPlaceholderText("Brief summary of your question or issue...")
         comp_layout.addWidget(self.txt_summary, 1, 1)
 
-        comp_layout.addWidget(QLabel("Detailed Description:"), 2, 0)
+        comp_layout.addWidget(QLabel("Detailed Message:"), 2, 0)
         self.txt_desc = QTextEdit()
         self.txt_desc.setMaximumHeight(100)
-        self.txt_desc.setPlaceholderText("What happened? What were the steps to reproduce? What was expected?")
+        self.txt_desc.setPlaceholderText("Describe your request in detail. We typically respond within 2 to 4 hours.")
         comp_layout.addWidget(self.txt_desc, 2, 1)
 
-        body_layout.addWidget(comp_box)
+        row_send = QHBoxLayout()
+        btn_send_both = QPushButton("✉️ Send Message to Founders")
+        btn_send_both.setProperty("class", "primaryBtn")
+        btn_send_both.clicked.connect(self._email_founders)
+        row_send.addWidget(btn_send_both)
+        row_send.addStretch()
+        comp_layout.addLayout(row_send, 3, 1)
 
-        # 2. Anonymized Diagnostic Exporter Card
-        anon_box = QGroupBox("Zero-Personal-Data Diagnostic Log Exporter")
-        anon_box.setStyleSheet("QGroupBox { font-size: 14px; font-weight: 700; color: #10B981; }")
-        anon_layout = QVBoxLayout(anon_box)
-        anon_layout.setContentsMargins(16, 20, 16, 16)
+        body_layout.addWidget(self.comp_box)
+
+        # 3. Anonymized Diagnostic Exporter Card
+        self.anon_box = QGroupBox("Zero-Personal-Data Diagnostic Log Exporter")
+        anon_layout = QVBoxLayout(self.anon_box)
+        anon_layout.setContentsMargins(18, 22, 18, 16)
         anon_layout.setSpacing(10)
 
-        anon_desc = QLabel("Our diagnostic exporter automatically strips and redacts all usernames, file paths, emails, and license private keys. "
-                           "You can inspect the live sanitized output below before sharing it.")
-        anon_desc.setStyleSheet("color: #94A3B8; font-size: 12px;")
-        anon_desc.setWordWrap(True)
-        anon_layout.addWidget(anon_desc)
+        self.anon_desc = QLabel(
+            "Our diagnostic exporter automatically strips and redacts all usernames, file paths, emails, and license keys. "
+            "You can inspect the live sanitized output below before sharing it."
+        )
+        self.anon_desc.setWordWrap(True)
+        anon_layout.addWidget(self.anon_desc)
 
         btn_gen = QPushButton("🛡️ Generate Anonymized Diagnostic Report")
         btn_gen.setProperty("class", "primaryBtn")
@@ -1645,7 +2248,7 @@ class SupportPage(QWidget):
         anon_layout.addWidget(btn_gen, 0, Qt.AlignmentFlag.AlignLeft)
 
         self.txt_log_preview = QTextEdit()
-        self.txt_log_preview.setMaximumHeight(160)
+        self.txt_log_preview.setMaximumHeight(140)
         self.txt_log_preview.setReadOnly(True)
         self.txt_log_preview.setPlaceholderText("Click 'Generate Anonymized Diagnostic Report' to review the sanitized output...")
         anon_layout.addWidget(self.txt_log_preview)
@@ -1661,19 +2264,87 @@ class SupportPage(QWidget):
         btn_copy.clicked.connect(self._copy_log)
         exp_btns.addWidget(btn_copy)
 
-        btn_mail = QPushButton("✉️ Send via Default Email Client")
-        btn_mail.setProperty("class", "secondaryBtn")
-        btn_mail.clicked.connect(self._email_support)
-        exp_btns.addWidget(btn_mail)
+        btn_mail_diag = QPushButton("✉️ Send with Diagnostics via Email")
+        btn_mail_diag.setProperty("class", "secondaryBtn")
+        btn_mail_diag.clicked.connect(self._email_with_diagnostics)
+        exp_btns.addWidget(btn_mail_diag)
 
         exp_btns.addStretch()
         anon_layout.addLayout(exp_btns)
 
-        body_layout.addWidget(anon_box)
+        body_layout.addWidget(self.anon_box)
         body_layout.addStretch()
 
-        scroll.setWidget(body)
-        main_layout.addWidget(scroll, 1)
+        self.scroll.setWidget(self.body)
+        main_layout.addWidget(self.scroll, 1)
+
+    def apply_theme(self, is_dark: bool) -> None:
+        self.is_dark = is_dark
+        self.setStyleSheet(get_page_stylesheet(is_dark))
+        if hasattr(self, "header") and hasattr(self.header, "update_theme"):
+            self.header.update_theme(is_dark)
+
+        bg_card = "#1E293B" if is_dark else "#F1F5F9"
+        border_card = "#334155" if is_dark else "#CBD5E1"
+        self.card1.setStyleSheet(f"QFrame#contactSubCard {{ background-color: {bg_card}; border: 1px solid {border_card}; border-radius: 8px; }}")
+        self.card2.setStyleSheet(f"QFrame#contactSubCard {{ background-color: {bg_card}; border: 1px solid {border_card}; border-radius: 8px; }}")
+
+        bg_input = "#0B1120" if is_dark else "#FFFFFF"
+        text_color = "#F8FAFC" if is_dark else "#0F172A"
+        self.txt_log_preview.setStyleSheet(
+            f"background-color: {bg_input}; color: {text_color}; border: 1px solid {border_card}; border-radius: 6px; padding: 8px; font-family: monospace; font-size: 11px;"
+        )
+
+    def _copy_to_clip(self, text: str, label: str) -> None:
+        QApplication.clipboard().setText(text)
+        QMessageBox.information(self, "Copied", f"{label} copied to clipboard:\n{text}")
+
+    def _open_email(self, to_addr: str, default_subject: str) -> None:
+        import urllib.parse
+        subject = self.txt_summary.text().strip() or default_subject
+        desc = self.txt_desc.toPlainText().strip()
+        mailto = f"mailto:{to_addr}?subject={urllib.parse.quote(subject)}&body={urllib.parse.quote(desc)}"
+        self._launch_url(mailto)
+
+    def _open_wa(self, phone_with_code: str) -> None:
+        url = f"https://wa.me/{phone_with_code}"
+        self._launch_url(url)
+
+    def _email_founders(self) -> None:
+        import urllib.parse
+        subject = f"Design Matcher Inquiry: {self.txt_summary.text().strip() or self.combo_cat.currentText()}"
+        body_content = (
+            f"Category: {self.combo_cat.currentText()}\n\n"
+            f"Message:\n{self.txt_desc.toPlainText().strip()}\n\n"
+            f"-- Sent from Design Matcher Desktop --\n"
+        )
+        to_addrs = "suhel.mulani90@gmail.com,nihal.mulani@gmail.com"
+        mailto = f"mailto:{to_addrs}?subject={urllib.parse.quote(subject)}&body={urllib.parse.quote(body_content)}"
+        self._launch_url(mailto)
+
+    def _email_with_diagnostics(self) -> None:
+        import urllib.parse
+        subject = f"Support Request: {self.txt_summary.text().strip() or self.combo_cat.currentText()}"
+        body_content = (
+            f"Category: {self.combo_cat.currentText()}\n\n"
+            f"Description:\n{self.txt_desc.toPlainText().strip()}\n\n"
+            f"Diagnostics:\n{self.txt_log_preview.toPlainText().strip()[:2000]}"
+        )
+        to_addrs = "suhel.mulani90@gmail.com,nihal.mulani@gmail.com"
+        mailto = f"mailto:{to_addrs}?subject={urllib.parse.quote(subject)}&body={urllib.parse.quote(body_content)}"
+        self._launch_url(mailto)
+
+    def _launch_url(self, url: str) -> None:
+        import subprocess
+        try:
+            if sys.platform == "darwin":
+                subprocess.run(["open", url], check=False)
+            elif os.name == "nt":
+                os.startfile(url)  # type: ignore[attr-defined]
+            else:
+                subprocess.run(["xdg-open", url], check=False)
+        except Exception as exc:
+            logger.warning("Could not launch URL %s: %s", url, exc)
 
     def _sanitize_logs(self, raw_text: str) -> str:
         """Sanitizes raw log string removing username, home paths, license keys, IPs, and emails."""
@@ -1691,7 +2362,6 @@ class SupportPage(QWidget):
         return "\n".join(lines)
 
     def _generate_sanitized_log(self) -> None:
-        """Reads recent logs and scrubs all personal identifiable information."""
         raw_lines: List[str] = []
         for log_candidate in ["dxf_ingest.log", "design_matcher/dxf_ingest.log"]:
             p = Path(log_candidate)
@@ -1710,7 +2380,6 @@ class SupportPage(QWidget):
             "PII Status: Scrubbed (Usernames, Home Paths, and License Secrets redacted)",
             "----------------------------------------------------",
         ]
-
         sanitized_body = self._sanitize_logs("\n".join(raw_lines))
         report = "\n".join(header) + "\n" + sanitized_body
         self.txt_log_preview.setPlainText(report)
@@ -1720,7 +2389,6 @@ class SupportPage(QWidget):
         if not text:
             self._generate_sanitized_log()
             text = self.txt_log_preview.toPlainText().strip()
-
         path, _ = QFileDialog.getSaveFileName(self, "Save Diagnostic Report", "design_matcher_diagnostics.txt", "Text Files (*.txt)")
         if path:
             Path(path).write_text(text, encoding="utf-8")
@@ -1734,19 +2402,186 @@ class SupportPage(QWidget):
         QApplication.clipboard().setText(text)
         QMessageBox.information(self, "Copied", "Sanitized diagnostics copied to clipboard!")
 
-    def _email_support(self) -> None:
-        import urllib.parse
-        subject = f"Support Request: {self.txt_summary.text().strip() or self.combo_cat.currentText()}"
-        body_content = (
-            f"Category: {self.combo_cat.currentText()}\n\n"
-            f"Description:\n{self.txt_desc.toPlainText().strip()}\n\n"
-            f"Diagnostics:\n{self.txt_log_preview.toPlainText().strip()[:2000]}"
+
+# Backwards compatibility alias for existing imports / tests
+SupportPage = ContactPage
+
+
+# ==============================================================================
+# 11. PrivacyPolicyPage (Privacy Policy & Data Sovereignty)
+# ==============================================================================
+
+class PrivacyPolicyPage(QWidget):
+    """Dedicated Privacy Policy and local data protection disclosure."""
+    back_requested = Signal()
+
+    def __init__(self, parent: Optional[QWidget] = None) -> None:
+        super().__init__(parent)
+        self.setObjectName("pageRoot")
+        self.is_dark = True
+        self._setup_ui()
+        self.apply_theme(True)
+
+    def _setup_ui(self) -> None:
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
+
+        self.header = create_page_header(
+            "Privacy Policy & Data Sovereignty",
+            "Our transparent commitment to 100% on-device processing and complete data privacy.",
+            on_back=self.back_requested.emit,
+            is_dark=self.is_dark,
         )
-        mailto = f"mailto:support@designmatcher.com?subject={urllib.parse.quote(subject)}&body={urllib.parse.quote(body_content)}"
-        import subprocess
-        if sys.platform == "darwin":
-            subprocess.run(["open", mailto])
-        elif os.name == "nt":
-            os.startfile(mailto)  # type: ignore[attr-defined]
-        else:
-            subprocess.run(["xdg-open", mailto])
+        main_layout.addWidget(self.header)
+
+        self.scroll = QScrollArea(self)
+        self.scroll.setWidgetResizable(True)
+        self.body = QWidget()
+        self.body.setObjectName("pageBody")
+        body_layout = QVBoxLayout(self.body)
+        body_layout.setContentsMargins(30, 20, 30, 24)
+        body_layout.setSpacing(16)
+
+        self.txt_privacy = QTextEdit()
+        self.txt_privacy.setReadOnly(True)
+        body_layout.addWidget(self.txt_privacy, 1)
+
+        self.scroll.setWidget(self.body)
+        main_layout.addWidget(self.scroll, 1)
+
+    def apply_theme(self, is_dark: bool) -> None:
+        self.is_dark = is_dark
+        self.setStyleSheet(get_page_stylesheet(is_dark))
+        if hasattr(self, "header") and hasattr(self.header, "update_theme"):
+            self.header.update_theme(is_dark)
+
+        title_col = "#38BDF8" if is_dark else "#0284C7"
+        head_col = "#F8FAFC" if is_dark else "#0F172A"
+        body_col = "#CBD5E1" if is_dark else "#334155"
+        bg_card = "#0B1120" if is_dark else "#FFFFFF"
+        border_card = "#1E293B" if is_dark else "#CBD5E1"
+
+        self.txt_privacy.setStyleSheet(
+            f"background-color: {bg_card}; border: 1px solid {border_card}; border-radius: 8px; padding: 16px; color: {body_col};"
+        )
+        self.txt_privacy.setHtml(f"""
+        <h2 style="color:{title_col}; margin-top:0;">DESIGN MATCHER - PRIVACY POLICY</h2>
+        <p style="font-size:12px; color:#94A3B8;">Last Updated: October 2026 | Effective for all versions of Design Matcher Desktop</p>
+        
+        <h3 style="color:{head_col};">1. 100% On-Device Local Computing Commitment</h3>
+        <p>Design Matcher Desktop operates on a strict <b>Local-First Privacy Architecture</b>. All customer photos, CAD DXF drawings, PDF catalogs, vector linework, DINOv2 neural feature extraction, and FAISS vector similarity searches execute 100% locally on your workstation's hardware. <b>Your proprietary design library, drawings, and customer photos are NEVER uploaded, transmitted, or accessible to external servers.</b></p>
+        
+        <h3 style="color:{head_col};">2. Zero Telemetry &amp; No Customer Design Tracking</h3>
+        <p>We do not track which patterns you search, which designs match, or what projects your shop is fabricating. We collect zero analytics on your search terms or customer linework.</p>
+        
+        <h3 style="color:{head_col};">3. Licensing Synchronization Telemetry</h3>
+        <p>When online license validation is activated, the application connects exclusively to our secure licensing server to verify subscription status. The only data transmitted is:</p>
+        <ul>
+          <li>Your 29-character License Key</li>
+          <li>A one-way cryptographic SHA-256 hardware hash (identifying the authorized seat)</li>
+          <li>Operating system name and architecture (macOS / Windows x64)</li>
+          <li>Application version number</li>
+        </ul>
+        <p>For high-security workshops with air-gapped machines, <b>Offline Cryptographic License Activation</b> (.dmreq / .lic files) is fully supported with zero network connections required.</p>
+        
+        <h3 style="color:{head_col};">4. Automated Zero-PII Diagnostic Redaction</h3>
+        <p>If you choose to export diagnostic logs for technical support, our built-in sanitizer automatically strips and redacts all user home directory paths, system usernames, IP addresses, email addresses, and cryptographic private keys before the report is displayed or saved.</p>
+        
+        <h3 style="color:{head_col};">5. Complete Data Sovereignty &amp; Right to Deletion</h3>
+        <p>You retain 100% ownership and control over your data. You may purge your search history, delete your local vector embedding cache, or perform a total factory reset at any time from the <i>Backup &amp; Data Privacy</i> page.</p>
+        
+        <h3 style="color:{head_col};">6. Data Protection Inquiries</h3>
+        <p>For questions regarding our privacy practices or security audits, contact our founding engineering team:</p>
+        <ul>
+          <li><b>Suhel Mulani:</b> <a href="mailto:suhel.mulani90@gmail.com">suhel.mulani90@gmail.com</a> | +91 9422602386</li>
+          <li><b>Nihal Mulani:</b> <a href="mailto:nihal.mulani@gmail.com">nihal.mulani@gmail.com</a> | +91 9423591358</li>
+        </ul>
+        """)
+
+
+# ==============================================================================
+# 12. TermsConditionsPage (Terms & Conditions)
+# ==============================================================================
+
+class TermsConditionsPage(QWidget):
+    """Dedicated Terms & Conditions and workshop safety guidelines."""
+    back_requested = Signal()
+
+    def __init__(self, parent: Optional[QWidget] = None) -> None:
+        super().__init__(parent)
+        self.setObjectName("pageRoot")
+        self.is_dark = True
+        self._setup_ui()
+        self.apply_theme(True)
+
+    def _setup_ui(self) -> None:
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
+
+        self.header = create_page_header(
+            "Terms & Conditions of Software Use",
+            "Commercial license agreement, acceptable fabrication use, and workshop safety guidelines.",
+            on_back=self.back_requested.emit,
+            is_dark=self.is_dark,
+        )
+        main_layout.addWidget(self.header)
+
+        self.scroll = QScrollArea(self)
+        self.scroll.setWidgetResizable(True)
+        self.body = QWidget()
+        self.body.setObjectName("pageBody")
+        body_layout = QVBoxLayout(self.body)
+        body_layout.setContentsMargins(30, 20, 30, 24)
+        body_layout.setSpacing(16)
+
+        self.txt_terms = QTextEdit()
+        self.txt_terms.setReadOnly(True)
+        body_layout.addWidget(self.txt_terms, 1)
+
+        self.scroll.setWidget(self.body)
+        main_layout.addWidget(self.scroll, 1)
+
+    def apply_theme(self, is_dark: bool) -> None:
+        self.is_dark = is_dark
+        self.setStyleSheet(get_page_stylesheet(is_dark))
+        if hasattr(self, "header") and hasattr(self.header, "update_theme"):
+            self.header.update_theme(is_dark)
+
+        title_col = "#38BDF8" if is_dark else "#0284C7"
+        head_col = "#F8FAFC" if is_dark else "#0F172A"
+        body_col = "#CBD5E1" if is_dark else "#334155"
+        bg_card = "#0B1120" if is_dark else "#FFFFFF"
+        border_card = "#1E293B" if is_dark else "#CBD5E1"
+
+        self.txt_terms.setStyleSheet(
+            f"background-color: {bg_card}; border: 1px solid {border_card}; border-radius: 8px; padding: 16px; color: {body_col};"
+        )
+        self.txt_terms.setHtml(f"""
+        <h2 style="color:{title_col}; margin-top:0;">DESIGN MATCHER - TERMS &amp; CONDITIONS</h2>
+        <p style="font-size:12px; color:#94A3B8;">Last Revised: October 2026 | Governing Commercial Use of Design Matcher</p>
+        
+        <h3 style="color:{head_col};">1. Commercial License Grant &amp; Permitted Use</h3>
+        <p>Subject to an active subscription or valid trial license, Design Matcher grants you a non-exclusive, non-transferable commercial license to install and operate Design Matcher on your licensed workstation(s). Permitted use includes CNC laser cutting, plasma cutting, waterjet machining, CNC wood/acrylic router fabrication, and shop floor catalog lookup.</p>
+        
+        <h3 style="color:{head_col};">2. 100% Ownership of Your Proprietary CAD Linework</h3>
+        <p>You retain 100% full legal title, copyright, and ownership of all DXF CAD vector files, PDF catalogs, cut designs, drawings, and images processed by the software. Design Matcher claims zero intellectual property rights over your catalog files, search inputs, or matching outputs.</p>
+        
+        <h3 style="color:{head_col};">3. Workshop &amp; Manufacturing Safety Disclaimer</h3>
+        <p><b>CRITICAL OPERATOR RESPONSIBILITY:</b> CNC laser cutters, plasma torches, waterjets, and routers are high-powered industrial manufacturing tools capable of causing material damage or physical harm. Design Matcher is an image-to-vector matching aid. <b>The machine operator, CNC programmer, and shop supervisor are solely responsible for inspecting CAD DXF dimensions, scale, geometry, closed contours, tool kerf offsets, and lead-in/lead-out paths prior to initiating cutting cycles.</b> Design Matcher shall not be liable for machine crashes, tool damage, or scrap material resulting from unverified CAD geometry.</p>
+        
+        <h3 style="color:{head_col};">4. Seat Activations &amp; Security Compliance</h3>
+        <p>Each license key permits concurrent activations up to your purchased seat count. Reverse engineering, decompiling, circumventing cryptographic licensing checks, or publishing license keys is strictly prohibited.</p>
+        
+        <h3 style="color:{head_col};">5. Disclaimer of Warranties &amp; Limitation of Liability</h3>
+        <p>The software is provided "AS IS", without warranty of any kind, express or implied. In no event shall Suhel Mulani, Nihal Mulani, or Design Matcher be liable for any direct, indirect, incidental, special, or consequential damages arising out of the use or inability to use this software.</p>
+        
+        <h3 style="color:{head_col};">6. Contact &amp; Commercial Upgrades</h3>
+        <p>For enterprise volume licensing, custom machine integrations, or terms clarifications, please contact:</p>
+        <ul>
+          <li><b>Suhel Mulani:</b> <a href="mailto:suhel.mulani90@gmail.com">suhel.mulani90@gmail.com</a> | +91 9422602386</li>
+          <li><b>Nihal Mulani:</b> <a href="mailto:nihal.mulani@gmail.com">nihal.mulani@gmail.com</a> | +91 9423591358</li>
+        </ul>
+        """)
+
