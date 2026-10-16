@@ -646,13 +646,8 @@ class MainWindow(QMainWindow):
 
         self.license_btn = QPushButton("🔑 License", header)
         self.license_btn.setObjectName("headerBtn")
-        self.license_btn.setStyleSheet(
-            "QPushButton { background: #1E293B; color: #38BDF8; border: 1px solid #0284C7; "
-            "padding: 5px 12px; font-weight: 600; font-size: 12px; border-radius: 5px; } "
-            "QPushButton:hover { background: #0369A1; color: white; }"
-        )
+        self.license_btn.setVisible(False)
         self.license_btn.clicked.connect(self._open_license_dialog)
-        header_layout.addWidget(self.license_btn)
 
         help_btn = QPushButton("❓ Help", header)
         help_btn.setObjectName("headerBtn")
@@ -1773,7 +1768,9 @@ class MainWindow(QMainWindow):
             accepted = self.catalog_index.db.get_setting("eula_accepted", "0") == "1"
             self.eula_page.set_already_accepted(accepted)
         elif tab_id == 3:
-            self.license_page.refresh()
+            # Activation & Subscription Management page is removed from UI
+            self.open_page(0)
+            return
         elif tab_id == 4:
             self.settings_page._load_values()
 
@@ -2118,11 +2115,7 @@ class MainWindow(QMainWindow):
         act_settings.setShortcut("Ctrl+,")
         act_settings.triggered.connect(lambda: self.open_page(4))
 
-        # License Menu
-        lic_menu = mb.addMenu("&License")
-        act_lic = lic_menu.addAction("Activation & License Status...")
-        act_lic.triggered.connect(lambda: self.open_page(3))
-        act_updates = lic_menu.addAction("Check for Updates...")
+        act_updates = tools_menu.addAction("Check for Updates...")
         act_updates.triggered.connect(lambda: self.open_page(6))
 
         # Help Menu
@@ -2356,7 +2349,7 @@ class MainWindow(QMainWindow):
                 self.nav_tab_dxf_preview.setEnabled(False)
                 self.nav_tab_dxf_preview.setText("🔒 2. DXF Preview (Locked)")
                 self.nav_tab_dxf_preview.setToolTip(
-                    "DXF Preview is locked: Subscription expired or unlicensed. Click to renew / activate."
+                    "DXF Preview is locked: Subscription expired or unlicensed."
                 )
                 self.nav_tab_dxf_preview.setProperty("locked", True)
                 self.nav_tab_dxf_preview.style().polish(self.nav_tab_dxf_preview)
@@ -2365,27 +2358,30 @@ class MainWindow(QMainWindow):
             if hasattr(self, "main_stack") and self.main_stack.currentIndex() == 1:
                 self._on_main_tab_changed(0)
 
+        # Keep license button hidden from UI
+        self.license_btn.setVisible(False)
+
     def _open_license_dialog(self) -> None:
-        """Opens in-app Activation & License page."""
-        self.open_page(3)
+        """License UI removed from view."""
+        pass
 
     def _check_license_on_startup(self) -> None:
         """Emits notification if license is expiring soon or expired, and triggers background online heartbeat."""
         verdict = self.license_manager.check_license()
         if not verdict.is_valid:
             if verdict.is_expired:
-                self.status_bar.showMessage("⚠️ Subscription has expired. Matching operations are locked. Click 'License' to renew.")
+                self.status_bar.showMessage("⚠️ Subscription has expired. Matching operations are locked.")
             elif verdict.status.value == "SUSPENDED":
-                self.status_bar.showMessage("⚠️ Subscription is suspended by administrator. Click 'License' for details.")
+                self.status_bar.showMessage("⚠️ Subscription is suspended by administrator.")
             elif verdict.status.value == "REVOKED":
-                self.status_bar.showMessage("🔒 Subscription has been revoked. Click 'License' for details.")
+                self.status_bar.showMessage("🔒 Subscription has been revoked.")
             else:
-                self.status_bar.showMessage("ℹ️ Software is unlicensed. Click 'Activate License' in the top bar to get started.")
+                self.status_bar.showMessage("Ready. Select or drop a customer photo to begin.")
         else:
             warn_days = self.license_manager.get_expiration_warning_days()
             if warn_days is not None:
                 self.status_bar.showMessage(
-                    f"⚠️ Subscription Reminder: Your license expires in {verdict.days_remaining} day(s). Click 'License' to renew."
+                    f"⚠️ Subscription Reminder: Your license expires in {verdict.days_remaining} day(s)."
                 )
 
         # Trigger background online validation heartbeat if a license is installed
