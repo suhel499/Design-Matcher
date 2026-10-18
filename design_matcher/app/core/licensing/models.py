@@ -118,3 +118,8 @@ class LicenseCheckResult:
     expires_at: Optional[datetime] = None
     message: str = ""
     details: Dict[str, Any] = field(default_factory=dict)
+
+    @property
+    def error_message(self) -> str:
+        """Compatibility alias for message."""
+        return self.message

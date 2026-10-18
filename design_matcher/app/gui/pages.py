@@ -996,7 +996,7 @@ class LicensePage(QWidget):
         if verdict.is_valid:
             QMessageBox.information(self, "Synced", f"License synchronized successfully!\nStatus: {verdict.status.value}")
         else:
-            QMessageBox.warning(self, "Sync Notice", f"Sync result: {verdict.error_message or 'Sync complete'}")
+            QMessageBox.warning(self, "Sync Notice", f"Sync result: {verdict.message or 'Sync complete'}")
         self.refresh()
         self.license_changed.emit()
 
