@@ -440,11 +440,12 @@ class LicenseManager:
         if not self._cached_payload:
             return self.check_license()
 
+        payload = self._cached_payload
         url = (server_url or self.server_url).rstrip("/") + "/api/v1/licenses/validate"
         dev_info = get_device_info()
 
         req_payload = {
-            "license_key": self._cached_payload.license_key,
+            "license_key": payload.license_key,
             "machine_fingerprint": dev_info["machine_fingerprint"],
             "nonce": secrets.token_hex(16),
         }
@@ -486,9 +487,9 @@ class LicenseManager:
                     is_valid=False,
                     is_revoked_or_suspended=True,
                     status=target_status,
-                    license_id=self._cached_payload.license_id if self._cached_payload else None,
-                    license_key=self._cached_payload.license_key if self._cached_payload else None,
-                    customer_name=self._cached_payload.customer_name if self._cached_payload else None,
+                    license_id=payload.license_id,
+                    license_key=payload.license_key,
+                    customer_name=payload.customer_name,
                     message=f"Server validation: {detail}",
                 )
 
@@ -515,11 +516,12 @@ class LicenseManager:
         if not self._cached_payload:
             return False, "No active license to deactivate."
 
+        payload = self._cached_payload
         url = (server_url or self.server_url).rstrip("/") + "/api/v1/licenses/deactivate"
         dev_info = get_device_info()
 
         req_payload = {
-            "license_key": self._cached_payload.license_key,
+            "license_key": payload.license_key,
             "machine_fingerprint": dev_info["machine_fingerprint"],
             "nonce": secrets.token_hex(16),
         }
@@ -584,3 +586,4 @@ class LicenseManager:
         except Exception as exc:
             logger.exception("Failed to import offline license: %s", exc)
             return False, f"Failed to import offline license: {exc}"
+

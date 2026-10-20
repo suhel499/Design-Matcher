@@ -152,7 +152,7 @@ def test_main_window_search_modes_and_dxf(qapp, tmp_path):
     # 1. Check default is Mode A
     assert win.search_mode == "mode_a"
     assert not win.photo_tools_container.isHidden()
-    assert win.search_btn.text() == "SEARCH DXF LIBRARY (FROM STENCIL)"
+    assert win.search_btn.text() == "SEARCH DXF & PDF LIBRARIES (FROM STENCIL)"
 
     # 2. Switch to Mode B
     win._set_search_mode("mode_b")
@@ -306,6 +306,105 @@ def test_start_dxf_indexing_flow_qfiledialog(qapp, tmp_path, monkeypatch):
     # Should run without NameError: name 'QFileDialog' is not defined
     win._start_dxf_indexing_flow()
     assert win.dxf_index_worker is not None
+
+
+def test_main_window_search_filters_and_sorting(qapp, tmp_path):
+    """Tests multi-criteria search filtering, live keyword search, shape filtering, and sorting."""
+    from app.core.search import SearchResult
+    from app.gui.main_window import MainWindow
+
+    win = MainWindow(data_dir=tmp_path)
+
+    # Populate dummy DXF and PDF search results
+    r1 = SearchResult(
+        rank=1,
+        score=0.92,
+        confidence_pct=92.0,
+        tile_id=1,
+        pdf_path="/path/to/floral_square.dxf",
+        pdf_name="floral_square.dxf",
+        folder="/path/to",
+        page_number=1,
+        tile_index=0,
+        crop_type="dxf",
+        bbox=[0, 0, 100, 100],
+        design_number="FLORAL-01",
+        thumbnail_path=None,
+        best_rotation_deg=0,
+        iou=0.88,
+        chamfer=0.03,
+        aspect_ratio=1.0,
+    )
+    r2 = SearchResult(
+        rank=2,
+        score=0.74,
+        confidence_pct=74.0,
+        tile_id=2,
+        pdf_path="/path/to/mandir_jali_tall.dxf",
+        pdf_name="mandir_jali_tall.dxf",
+        folder="/path/to",
+        page_number=1,
+        tile_index=1,
+        crop_type="dxf",
+        bbox=[0, 0, 200, 100],
+        design_number="JALI-02",
+        thumbnail_path=None,
+        best_rotation_deg=90,
+        iou=0.65,
+        chamfer=0.11,
+        aspect_ratio=0.5,
+    )
+    r3 = SearchResult(
+        rank=3,
+        score=0.58,
+        confidence_pct=58.0,
+        tile_id=3,
+        pdf_path="/path/to/modern_gate_wide.dxf",
+        pdf_name="modern_gate_wide.dxf",
+        folder="/path/to",
+        page_number=1,
+        tile_index=2,
+        crop_type="dxf",
+        bbox=[0, 0, 100, 250],
+        design_number="GATE-03",
+        thumbnail_path=None,
+        best_rotation_deg=0,
+        iou=0.50,
+        chamfer=0.18,
+        aspect_ratio=2.5,
+    )
+
+    win.last_dxf_results = [r1, r2, r3]
+    win.last_pdf_results = []
+    win._render_results()
+
+    # 1. Initial render has all 3 results
+    assert len(win.result_cards) == 3
+
+    # 2. Text keyword filter
+    win.search_filter_input.setText("jali")
+    win._render_results()
+    assert len(win.result_cards) == 1
+    assert win.result_cards[0].result.design_number == "JALI-02"
+
+    # 3. Confidence filter (>= 70%)
+    win.search_filter_input.clear()
+    win.combo_confidence_filter.setCurrentIndex(1)  # High (>= 70%)
+    win._render_results()
+    assert len(win.result_cards) == 2
+
+    # 4. Shape filter (Square 1:1)
+    win.combo_confidence_filter.setCurrentIndex(0)
+    win.combo_shape_filter.setCurrentIndex(1)  # Square
+    win._render_results()
+    assert len(win.result_cards) == 1
+    assert win.result_cards[0].result.pdf_name == "floral_square.dxf"
+
+    # 5. Clear filters restores all 3
+    win._clear_search_filters()
+    assert len(win.result_cards) == 3
+    assert win.search_filter_input.text() == ""
+
 
 
 

@@ -840,31 +840,94 @@ class MainWindow(QMainWindow):
         results_header_layout.addStretch()
         right_layout.addLayout(results_header_layout)
 
-        # Quick format filter tabs: All | Top 5 DXF | Top 5 PDF
-        filter_bar = QHBoxLayout()
-        filter_bar.setSpacing(6)
+        # Advanced Search & Matching Filter Control Card
+        self.results_filter_card = QFrame(right_widget)
+        self.results_filter_card.setObjectName("resultsFilterCard")
+        self.results_filter_card.setStyleSheet(
+            "QFrame#resultsFilterCard { background: #0F172A; border: 1px solid #1E293B; "
+            "border-radius: 8px; padding: 6px 10px; margin-bottom: 2px; }"
+        )
+        filter_card_layout = QVBoxLayout(self.results_filter_card)
+        filter_card_layout.setContentsMargins(4, 4, 4, 4)
+        filter_card_layout.setSpacing(6)
 
-        self.tab_all_btn = QPushButton("All Matches (Top 5 DXF + Top 5 PDF)", right_widget)
+        # Row 1: Format tabs & Match counter
+        row1 = QHBoxLayout()
+        row1.setSpacing(6)
+
+        self.tab_all_btn = QPushButton("All Matches", self.results_filter_card)
         self.tab_all_btn.setObjectName("filterTabBtn")
         self.tab_all_btn.setCheckable(True)
         self.tab_all_btn.setChecked(True)
         self.tab_all_btn.clicked.connect(lambda: self._set_results_filter("all"))
-        filter_bar.addWidget(self.tab_all_btn)
+        row1.addWidget(self.tab_all_btn)
 
-        self.tab_dxf_btn = QPushButton("📐 Top 5 DXF (Vectors)", right_widget)
+        self.tab_dxf_btn = QPushButton("📐 Top DXF", self.results_filter_card)
         self.tab_dxf_btn.setObjectName("filterTabBtn")
         self.tab_dxf_btn.setCheckable(True)
         self.tab_dxf_btn.clicked.connect(lambda: self._set_results_filter("dxf"))
-        filter_bar.addWidget(self.tab_dxf_btn)
+        row1.addWidget(self.tab_dxf_btn)
 
-        self.tab_pdf_btn = QPushButton("📄 Top 5 PDF Catalogs", right_widget)
+        self.tab_pdf_btn = QPushButton("📄 Top PDF", self.results_filter_card)
         self.tab_pdf_btn.setObjectName("filterTabBtn")
         self.tab_pdf_btn.setCheckable(True)
         self.tab_pdf_btn.clicked.connect(lambda: self._set_results_filter("pdf"))
-        filter_bar.addWidget(self.tab_pdf_btn)
+        row1.addWidget(self.tab_pdf_btn)
 
-        filter_bar.addStretch()
-        right_layout.addLayout(filter_bar)
+        row1.addStretch()
+        filter_card_layout.addLayout(row1)
+
+        # Row 2: Live text filter, confidence threshold, multi-criteria sort, and shape filter
+        row2 = QHBoxLayout()
+        row2.setSpacing(6)
+
+        self.search_filter_input = QLineEdit(self.results_filter_card)
+        self.search_filter_input.setPlaceholderText("🔍 Filter by code, name, folder...")
+        self.search_filter_input.setClearButtonEnabled(True)
+        self.search_filter_input.setStyleSheet("font-size: 11px; padding: 4px 8px; min-width: 150px;")
+        self.search_filter_input.textChanged.connect(lambda _: self._render_results())
+        row2.addWidget(self.search_filter_input, 3)
+
+        self.combo_confidence_filter = QComboBox(self.results_filter_card)
+        self.combo_confidence_filter.addItems([
+            "All Confidences",
+            "⭐ High (≥70%)",
+            "✓ Verified (≥80%)",
+        ])
+        self.combo_confidence_filter.setStyleSheet("font-size: 11px; padding: 4px 6px;")
+        self.combo_confidence_filter.currentIndexChanged.connect(lambda _: self._render_results())
+        row2.addWidget(self.combo_confidence_filter, 2)
+
+        self.combo_sort_filter = QComboBox(self.results_filter_card)
+        self.combo_sort_filter.addItems([
+            "Sort: Best Match %",
+            "Sort: Geometric Chamfer",
+            "Sort: Pixel Overlap (IoU)",
+            "Sort: Name (A-Z)",
+        ])
+        self.combo_sort_filter.setStyleSheet("font-size: 11px; padding: 4px 6px;")
+        self.combo_sort_filter.currentIndexChanged.connect(lambda _: self._render_results())
+        row2.addWidget(self.combo_sort_filter, 2)
+
+        self.combo_shape_filter = QComboBox(self.results_filter_card)
+        self.combo_shape_filter.addItems([
+            "Shape: All",
+            "Square (1:1)",
+            "Tall / Vertical",
+            "Wide / Horizontal",
+        ])
+        self.combo_shape_filter.setStyleSheet("font-size: 11px; padding: 4px 6px;")
+        self.combo_shape_filter.currentIndexChanged.connect(lambda _: self._render_results())
+        row2.addWidget(self.combo_shape_filter, 2)
+
+        self.btn_reset_filters = QPushButton("✕ Clear", self.results_filter_card)
+        self.btn_reset_filters.setObjectName("filterTabBtn")
+        self.btn_reset_filters.setToolTip("Reset text search and filter dropdowns")
+        self.btn_reset_filters.clicked.connect(self._clear_search_filters)
+        row2.addWidget(self.btn_reset_filters)
+
+        filter_card_layout.addLayout(row2)
+        right_layout.addWidget(self.results_filter_card)
 
         # Results scroll area
         self.scroll_area = QScrollArea(right_widget)
@@ -1530,6 +1593,30 @@ class MainWindow(QMainWindow):
         self.tab_pdf_btn.setChecked(mode == "pdf")
         self._render_results()
 
+    def _clear_search_filters(self) -> None:
+        """Resets all search query filters, confidence thresholds, and shape criteria."""
+        if hasattr(self, "search_filter_input"):
+            self.search_filter_input.blockSignals(True)
+            self.search_filter_input.clear()
+            self.search_filter_input.blockSignals(False)
+
+        if hasattr(self, "combo_confidence_filter"):
+            self.combo_confidence_filter.blockSignals(True)
+            self.combo_confidence_filter.setCurrentIndex(0)
+            self.combo_confidence_filter.blockSignals(False)
+
+        if hasattr(self, "combo_sort_filter"):
+            self.combo_sort_filter.blockSignals(True)
+            self.combo_sort_filter.setCurrentIndex(0)
+            self.combo_sort_filter.blockSignals(False)
+
+        if hasattr(self, "combo_shape_filter"):
+            self.combo_shape_filter.blockSignals(True)
+            self.combo_shape_filter.setCurrentIndex(0)
+            self.combo_shape_filter.blockSignals(False)
+
+        self._render_results()
+
     def _render_results(self) -> None:
         # Clear existing result cards
         self.result_cards.clear()
@@ -1540,10 +1627,10 @@ class MainWindow(QMainWindow):
                 if widget is not None:
                     widget.deleteLater()
 
-        dxf_matches = self.last_dxf_results
-        pdf_matches = self.last_pdf_results
+        raw_dxf = self.last_dxf_results
+        raw_pdf = self.last_pdf_results
 
-        if not dxf_matches and not pdf_matches:
+        if not raw_dxf and not raw_pdf:
             self.results_count_label.setText("0 matches")
             no_match = QLabel("No matching designs found in DXF or PDF catalogs.", self.results_container)
             no_match.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -1552,7 +1639,90 @@ class MainWindow(QMainWindow):
             self.results_layout.addStretch()
             return
 
-        self.results_count_label.setText(f"{len(dxf_matches)} DXF + {len(pdf_matches)} PDF matches")
+        # Read active filter criteria
+        kw = self.search_filter_input.text().strip().lower() if hasattr(self, "search_filter_input") else ""
+        conf_idx = self.combo_confidence_filter.currentIndex() if hasattr(self, "combo_confidence_filter") else 0
+        sort_idx = self.combo_sort_filter.currentIndex() if hasattr(self, "combo_sort_filter") else 0
+        shape_idx = self.combo_shape_filter.currentIndex() if hasattr(self, "combo_shape_filter") else 0
+        mode = getattr(self, "current_filter_mode", "all")
+
+        def item_passes_filter(r: SearchResult) -> bool:
+            # 1. Text keyword search
+            if kw:
+                code = (getattr(r, "design_code", "") or getattr(r, "design_number", "") or "").lower()
+                name = (getattr(r, "pdf_name", "") or "").lower()
+                folder = (getattr(r, "folder", "") or "").lower()
+                if kw not in code and kw not in name and kw not in folder:
+                    return False
+
+            # 2. Confidence filter
+            if conf_idx == 1 and r.confidence_pct < 70.0:
+                return False
+            elif conf_idx == 2 and r.confidence_pct < 80.0:
+                return False
+
+            # 3. Shape / Aspect ratio filter
+            ar = getattr(r, "aspect_ratio", None)
+            if shape_idx == 1:  # Square (1:1)
+                if ar is not None and not (0.75 <= ar <= 1.33):
+                    return False
+            elif shape_idx == 2:  # Tall / Vertical
+                if ar is not None and ar > 0.85:
+                    return False
+            elif shape_idx == 3:  # Wide / Horizontal
+                if ar is not None and ar < 1.15:
+                    return False
+
+            return True
+
+        dxf_matches = [r for r in raw_dxf if item_passes_filter(r)]
+        pdf_matches = [r for r in raw_pdf if item_passes_filter(r)]
+
+        # Apply sorting criteria
+        def get_sort_key(r: SearchResult) -> Any:
+            if sort_idx == 1:  # Geometric Chamfer (lower distance = better accuracy)
+                ch = r.chamfer if r.chamfer is not None else 999.0
+                return (ch, -r.confidence_pct)
+            elif sort_idx == 2:  # Pixel Overlap (IoU) (higher = better overlap)
+                iou_v = r.iou if r.iou is not None else -1.0
+                return (-iou_v, -r.confidence_pct)
+            elif sort_idx == 3:  # Name (A-Z)
+                return (r.pdf_name.lower(), -r.confidence_pct)
+            else:  # Best Match % (Composite confidence)
+                ch = r.chamfer if r.chamfer is not None else 999.0
+                return (-r.confidence_pct, ch)
+
+        dxf_matches.sort(key=get_sort_key)
+        pdf_matches.sort(key=get_sort_key)
+
+        total_showing = (len(dxf_matches) if mode in ("all", "dxf") else 0) + (len(pdf_matches) if mode in ("all", "pdf") else 0)
+        total_raw = (len(raw_dxf) if mode in ("all", "dxf") else 0) + (len(raw_pdf) if mode in ("all", "pdf") else 0)
+
+        if kw or conf_idx > 0 or shape_idx > 0:
+            self.results_count_label.setText(f"Showing {total_showing} of {total_raw} matches (filtered)")
+        else:
+            self.results_count_label.setText(f"{len(dxf_matches)} DXF + {len(pdf_matches)} PDF matches")
+
+        if total_showing == 0 and total_raw > 0:
+            empty_filter_box = QFrame(self.results_container)
+            is_d = getattr(self, "is_dark", True)
+            bg_col = "#1E293B" if is_d else "#F8FAFC"
+            br_col = "#334155" if is_d else "#CBD5E1"
+            empty_filter_box.setStyleSheet(f"background: {bg_col}; border: 1px dashed {br_col}; border-radius: 8px; padding: 24px;")
+            ef_layout = QVBoxLayout(empty_filter_box)
+            ef_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            ef_lbl = QLabel(f"No designs match current filters ('{kw}' / confidence / shape).", empty_filter_box)
+            ef_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            ef_lbl.setStyleSheet("color: #94A3B8; font-size: 13px; font-weight: 500;")
+            ef_layout.addWidget(ef_lbl)
+
+            btn_reset = QPushButton("Reset All Filters", empty_filter_box)
+            btn_reset.setProperty("class", "secondaryBtn")
+            btn_reset.clicked.connect(self._clear_search_filters)
+            ef_layout.addWidget(btn_reset, 0, Qt.AlignmentFlag.AlignCenter)
+            self.results_layout.addWidget(empty_filter_box)
+            self.results_layout.addStretch()
+            return
         mode = getattr(self, "current_filter_mode", "all")
 
         # 1. DXF CAD Results Section
@@ -2195,6 +2365,14 @@ class MainWindow(QMainWindow):
             text_pl = "#94A3B8" if is_dark else "#64748B"
             self.pl_text.setStyleSheet(f"color: {text_pl}; font-size: 12px; line-height: 1.5;")
 
+        if hasattr(self, "results_filter_card"):
+            card_bg = "#0F172A" if is_dark else "#F8FAFC"
+            card_border = "#1E293B" if is_dark else "#CBD5E1"
+            self.results_filter_card.setStyleSheet(
+                f"QFrame#resultsFilterCard {{ background: {card_bg}; border: 1px solid {card_border}; "
+                f"border-radius: 8px; padding: 6px 10px; margin-bottom: 2px; }}"
+            )
+
         for card in getattr(self, "result_cards", []):
             if hasattr(card, "apply_theme"):
                 card.apply_theme(is_dark)
@@ -2251,8 +2429,10 @@ class MainWindow(QMainWindow):
         self.results_count_label.setText("0 matches")
         while self.results_layout.count():
             item = self.results_layout.takeAt(0)
-            if item is not None and item.widget() is not None:
-                item.widget().deleteLater()
+            if item is not None:
+                w = item.widget()
+                if w is not None:
+                    w.deleteLater()
         self.result_cards.clear()
         self.placeholder_label.setVisible(True)
         self.tab_all_btn.setText("All Matches")

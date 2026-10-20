@@ -22,7 +22,7 @@ from unittest.mock import MagicMock
 
 import pytest
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QWidget
 
 from app.core.db import CatalogDatabase
 from app.core.index import CatalogIndex
@@ -86,9 +86,20 @@ def test_settings_page(qtbot, temp_dir):
     page = SettingsPage(db=db, catalog_index=idx)
     qtbot.addWidget(page)
 
+    # Verify layout utilises all width space with margins <= 50px
+    assert page.settings_container.maximumWidth() >= 10000
+    page_body = page.findChild(QWidget, "pageBody")
+    assert page_body is not None
+    margins = page_body.layout().contentsMargins()
+    assert margins.left() <= 50
+    assert margins.right() <= 50
+
     page.txt_folders.setPlainText("/path/to/dxf_folder")
     page.slider_thresh.setValue(82)
     page.spin_topk.setValue(45)
+    page.slider_chamfer.setValue(15)
+    page.spin_cand_pool.setValue(60)
+    page.chk_rotations.setChecked(False)
 
     saved_signals = []
     page.settings_saved.connect(lambda: saved_signals.append(True))
@@ -98,6 +109,9 @@ def test_settings_page(qtbot, temp_dir):
     assert db.get_setting("catalog_folders") == "/path/to/dxf_folder"
     assert db.get_setting("similarity_threshold") == "0.82"
     assert db.get_setting("top_k") == "45"
+    assert db.get_setting("chamfer_threshold") == "0.15"
+    assert db.get_setting("candidate_limit") == "60"
+    assert db.get_setting("allow_rotations") == "0"
 
 
 def test_catalog_manager_page(qtbot, temp_dir):

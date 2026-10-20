@@ -47,6 +47,7 @@ from PySide6.QtWidgets import (
     QProgressBar,
     QPushButton,
     QScrollArea,
+    QSizePolicy,
     QSlider,
     QSpinBox,
     QSplitter,
@@ -1098,7 +1099,7 @@ class SettingsPage(QWidget):
 
         self.header = create_page_header(
             "Application Settings",
-            "Configure separate or shared DXF & PDF catalog directories, similarity thresholds, and storage paths.",
+            "Configure CAD linework matching, search accuracy, catalog directories, and preferences.",
             on_back=self.back_requested.emit,
             is_dark=self.is_dark,
         )
@@ -1106,17 +1107,36 @@ class SettingsPage(QWidget):
 
         scroll = QScrollArea(self)
         scroll.setWidgetResizable(True)
+
         body = QWidget()
         body.setObjectName("pageBody")
         body_layout = QVBoxLayout(body)
-        body_layout.setContentsMargins(30, 24, 30, 24)
-        body_layout.setSpacing(20)
+        # Utilise available width with left/right margins <= 50px
+        body_layout.setContentsMargins(36, 20, 36, 28)
+        body_layout.setSpacing(16)
 
-        # 1. Folders Section: PDF & DXF Directories
-        folders_box = QGroupBox("Design Catalog & DXF CAD Directories")
+        # Full-width container utilising available screen width
+        self.settings_container = QWidget(body)
+        self.settings_container.setObjectName("settingsContainer")
+        self.settings_container.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        container_layout = QVBoxLayout(self.settings_container)
+        container_layout.setContentsMargins(0, 0, 0, 0)
+        container_layout.setSpacing(16)
+
+        # 2-Column Grid Layout for Settings Cards spanning the full width
+        grid = QGridLayout()
+        grid.setHorizontalSpacing(20)
+        grid.setVerticalSpacing(20)
+        grid.setColumnStretch(0, 1)
+        grid.setColumnStretch(1, 1)
+
+        # =====================================================================
+        # CARD 1 (Col 0, Row 0): Catalog & CAD Directories
+        # =====================================================================
+        folders_box = QGroupBox("📁 Catalog & CAD Storage Directories")
         folders_layout = QVBoxLayout(folders_box)
-        folders_layout.setContentsMargins(16, 20, 16, 16)
-        folders_layout.setSpacing(12)
+        folders_layout.setContentsMargins(16, 18, 16, 16)
+        folders_layout.setSpacing(10)
 
         # Same folder toggle
         self.chk_same_folder = QCheckBox("Use the same folder path for both PDF catalogs and DXF CAD files")
@@ -1125,22 +1145,22 @@ class SettingsPage(QWidget):
         folders_layout.addWidget(self.chk_same_folder)
 
         # PDF Folder Row
-        self.lbl_pdf_folder = QLabel("📄 PDF Catalogs Directory (Reads .pdf catalog books & sheets):")
-        self.lbl_pdf_folder.setStyleSheet("font-weight: 600;")
+        self.lbl_pdf_folder = QLabel("📄 PDF Catalogs Directory (Reads .pdf catalog sheets):")
+        self.lbl_pdf_folder.setStyleSheet("font-weight: 600; font-size: 12px;")
         folders_layout.addWidget(self.lbl_pdf_folder)
 
         pdf_row = QHBoxLayout()
         self.input_pdf_folder = QLineEdit()
-        self.input_pdf_folder.setPlaceholderText("Select folder containing PDF catalog files (e.g., /path/to/pdf_catalogs)...")
+        self.input_pdf_folder.setPlaceholderText("Select folder containing PDF catalog files...")
         self.input_pdf_folder.textChanged.connect(self._on_pdf_path_changed)
         pdf_row.addWidget(self.input_pdf_folder, 1)
 
-        btn_browse_pdf = QPushButton("📁 Browse PDF...")
+        btn_browse_pdf = QPushButton("📁 Browse...")
         btn_browse_pdf.setProperty("class", "secondaryBtn")
         btn_browse_pdf.clicked.connect(self._browse_pdf_folder)
         pdf_row.addWidget(btn_browse_pdf)
 
-        btn_open_pdf = QPushButton("Open")
+        btn_open_pdf = QPushButton("↗ Open")
         btn_open_pdf.setProperty("class", "secondaryBtn")
         btn_open_pdf.clicked.connect(lambda: self._open_dir_path(self.input_pdf_folder.text()))
         pdf_row.addWidget(btn_open_pdf)
@@ -1148,50 +1168,54 @@ class SettingsPage(QWidget):
 
         # DXF Folder Row
         self.lbl_dxf_folder = QLabel("📐 DXF CAD Library Directory (Reads .dxf CNC cut drawings):")
-        self.lbl_dxf_folder.setStyleSheet("font-weight: 600;")
+        self.lbl_dxf_folder.setStyleSheet("font-weight: 600; font-size: 12px;")
         folders_layout.addWidget(self.lbl_dxf_folder)
 
         dxf_row = QHBoxLayout()
         self.input_dxf_folder = QLineEdit()
-        self.input_dxf_folder.setPlaceholderText("Select folder containing DXF CAD files (e.g., /path/to/dxf_files)...")
+        self.input_dxf_folder.setPlaceholderText("Select folder containing DXF CAD files...")
         self.input_dxf_folder.textChanged.connect(self._on_dxf_path_changed)
         dxf_row.addWidget(self.input_dxf_folder, 1)
 
-        btn_browse_dxf = QPushButton("📁 Browse DXF...")
+        btn_browse_dxf = QPushButton("📁 Browse...")
         btn_browse_dxf.setProperty("class", "secondaryBtn")
         btn_browse_dxf.clicked.connect(self._browse_dxf_folder)
         dxf_row.addWidget(btn_browse_dxf)
 
-        btn_open_dxf = QPushButton("Open")
+        btn_open_dxf = QPushButton("↗ Open")
         btn_open_dxf.setProperty("class", "secondaryBtn")
         btn_open_dxf.clicked.connect(lambda: self._open_dir_path(self.input_dxf_folder.text()))
         dxf_row.addWidget(btn_open_dxf)
         folders_layout.addLayout(dxf_row)
 
-        # Quick Indexing shortcuts inside settings
+        # Quick Indexing buttons
         idx_btn_row = QHBoxLayout()
-        btn_idx_pdf = QPushButton("⚡ Index PDF Catalogs Now")
+        idx_btn_row.setSpacing(10)
+        btn_idx_pdf = QPushButton("⚡ Index PDF Catalogs")
         btn_idx_pdf.setProperty("class", "secondaryBtn")
         btn_idx_pdf.setToolTip("Scan and build vector index for all PDF catalogs in the selected folder")
         btn_idx_pdf.clicked.connect(self._trigger_index_pdf)
         idx_btn_row.addWidget(btn_idx_pdf)
 
-        btn_idx_dxf = QPushButton("⚡ Index DXF Library Now")
+        btn_idx_dxf = QPushButton("⚡ Index DXF Library")
         btn_idx_dxf.setProperty("class", "secondaryBtn")
         btn_idx_dxf.setToolTip("Scan and build geometric vector index for all DXF CAD files in the selected folder")
         btn_idx_dxf.clicked.connect(self._trigger_index_dxf)
         idx_btn_row.addWidget(btn_idx_dxf)
-        idx_btn_row.addStretch()
         folders_layout.addLayout(idx_btn_row)
 
-        body_layout.addWidget(folders_box)
+        grid.addWidget(folders_box, 0, 0)
 
-        # 2. Search & Matching Thresholds
-        thresh_box = QGroupBox("Search & Matching Thresholds")
+        # =====================================================================
+        # CARD 2 (Col 1, Row 0): Search & Matching Engine Defaults
+        # =====================================================================
+        thresh_box = QGroupBox("🎯 Search & Matching Engine Defaults")
         thresh_layout = QGridLayout(thresh_box)
-        thresh_layout.setContentsMargins(16, 20, 16, 16)
-        thresh_layout.setHorizontalSpacing(24)
-        thresh_layout.setVerticalSpacing(14)
+        thresh_layout.setContentsMargins(16, 18, 16, 16)
+        thresh_layout.setHorizontalSpacing(16)
+        thresh_layout.setVerticalSpacing(12)
+        thresh_layout.setColumnStretch(0, 0)
+        thresh_layout.setColumnStretch(1, 1)
 
         thresh_layout.addWidget(QLabel("Similarity Threshold:"), 0, 0)
         slider_row = QHBoxLayout()
@@ -1199,7 +1223,7 @@ class SettingsPage(QWidget):
         self.slider_thresh.setRange(40, 95)
         self.slider_thresh.setValue(75)
         self.lbl_thresh_val = QLabel("75%")
-        self.lbl_thresh_val.setStyleSheet("font-weight: 700; color: #38BDF8; min-width: 40px;")
+        self.lbl_thresh_val.setStyleSheet("font-weight: 700; color: #38BDF8; min-width: 44px;")
         self.slider_thresh.valueChanged.connect(lambda v: self.lbl_thresh_val.setText(f"{v}%"))
         slider_row.addWidget(self.slider_thresh, 1)
         slider_row.addWidget(self.lbl_thresh_val)
@@ -1207,72 +1231,170 @@ class SettingsPage(QWidget):
 
         thresh_layout.addWidget(QLabel("Max Results (Top K):"), 1, 0)
         self.spin_topk = QSpinBox()
-        self.spin_topk.setRange(10, 150)
+        self.spin_topk.setRange(5, 100)
         self.spin_topk.setValue(30)
         thresh_layout.addWidget(self.spin_topk, 1, 1)
 
-        thresh_layout.addWidget(QLabel("Reranking Mode:"), 2, 0)
-        self.combo_rerank = QComboBox()
-        self.combo_rerank.addItems(["Hybrid Vector + Linework (Recommended)", "Fast Vector Only", "Exact Linework Only"])
-        thresh_layout.addWidget(self.combo_rerank, 2, 1)
+        thresh_layout.addWidget(QLabel("Candidate Pool Size:"), 2, 0)
+        self.spin_cand_pool = QSpinBox()
+        self.spin_cand_pool.setRange(20, 150)
+        self.spin_cand_pool.setValue(50)
+        self.spin_cand_pool.setToolTip("Initial vector neighbors to evaluate before geometric Chamfer reranking")
+        thresh_layout.addWidget(self.spin_cand_pool, 2, 1)
 
-        thresh_layout.addWidget(QLabel("Worker Threads:"), 3, 0)
+        thresh_layout.addWidget(QLabel("Reranking Strategy:"), 3, 0)
+        self.combo_rerank = QComboBox()
+        self.combo_rerank.addItems([
+            "Hybrid Vector + Linework (Recommended)",
+            "Exact Linework Chamfer (Best for DXF Precision)",
+            "Fast Vector Only (High Speed)",
+        ])
+        thresh_layout.addWidget(self.combo_rerank, 3, 1)
+
+        thresh_layout.addWidget(QLabel("Worker Threads:"), 4, 0)
         self.spin_threads = QSpinBox()
         self.spin_threads.setRange(1, 16)
         self.spin_threads.setValue(max(1, (os.cpu_count() or 4) - 1))
-        thresh_layout.addWidget(self.spin_threads, 3, 1)
+        thresh_layout.addWidget(self.spin_threads, 4, 1)
 
-        body_layout.addWidget(thresh_box)
+        grid.addWidget(thresh_box, 0, 1)
 
-        # 3. Data Storage & Language
-        pref_box = QGroupBox("Storage, Language & Theme")
+        # =====================================================================
+        # CARD 3 (Col 0, Row 1): Geometric Matching Criteria & Tolerances
+        # =====================================================================
+        geom_box = QGroupBox("📐 Geometric Matching Criteria & Tolerances")
+        geom_layout = QGridLayout(geom_box)
+        geom_layout.setContentsMargins(16, 18, 16, 16)
+        geom_layout.setHorizontalSpacing(16)
+        geom_layout.setVerticalSpacing(12)
+        geom_layout.setColumnStretch(0, 0)
+        geom_layout.setColumnStretch(1, 1)
+
+        geom_layout.addWidget(QLabel("Chamfer Distance Max:"), 0, 0)
+        chamfer_row = QHBoxLayout()
+        self.slider_chamfer = QSlider(Qt.Orientation.Horizontal)
+        self.slider_chamfer.setRange(4, 25)
+        self.slider_chamfer.setValue(12)
+        self.lbl_chamfer_val = QLabel("0.12 (Precision)")
+        self.lbl_chamfer_val.setStyleSheet("font-weight: 700; color: #38BDF8; min-width: 100px;")
+        self.slider_chamfer.valueChanged.connect(self._on_chamfer_slider_changed)
+        chamfer_row.addWidget(self.slider_chamfer, 1)
+        chamfer_row.addWidget(self.lbl_chamfer_val)
+        geom_layout.addLayout(chamfer_row, 0, 1)
+
+        geom_layout.addWidget(QLabel("Aspect Ratio Filter:"), 1, 0)
+        self.combo_aspect_ratio = QComboBox()
+        self.combo_aspect_ratio.addItems([
+            "Balanced (±25% aspect ratio tolerance)",
+            "Strict (±10% - exact panel proportions)",
+            "Relaxed (±50% - flexible panel bounds)",
+            "Unconstrained (match any aspect ratio)",
+        ])
+        geom_layout.addWidget(self.combo_aspect_ratio, 1, 1)
+
+        geom_layout.addWidget(QLabel("Search Invariances:"), 2, 0)
+        invar_layout = QVBoxLayout()
+        invar_layout.setSpacing(6)
+        self.chk_rotations = QCheckBox("Test 90°, 180°, and 270° Rotations")
+        self.chk_rotations.setChecked(True)
+        invar_layout.addWidget(self.chk_rotations)
+
+        self.chk_mirrored = QCheckBox("Test Horizontal Mirror / Flip Augmentations")
+        self.chk_mirrored.setChecked(True)
+        invar_layout.addWidget(self.chk_mirrored)
+
+        self.chk_polarity = QCheckBox("Test Dual Polarity (Inverted Stencil Cutouts)")
+        self.chk_polarity.setChecked(True)
+        invar_layout.addWidget(self.chk_polarity)
+        geom_layout.addLayout(invar_layout, 2, 1)
+
+        grid.addWidget(geom_box, 1, 0)
+
+        # =====================================================================
+        # CARD 4 (Col 1, Row 1): Appearance, Storage & System
+        # =====================================================================
+        pref_box = QGroupBox("🎨 Appearance, Storage & System Paths")
         pref_layout = QGridLayout(pref_box)
-        pref_layout.setContentsMargins(16, 20, 16, 16)
-        pref_layout.setHorizontalSpacing(24)
-        pref_layout.setVerticalSpacing(14)
+        pref_layout.setContentsMargins(16, 18, 16, 16)
+        pref_layout.setHorizontalSpacing(16)
+        pref_layout.setVerticalSpacing(12)
+        pref_layout.setColumnStretch(0, 0)
+        pref_layout.setColumnStretch(1, 1)
 
-        pref_layout.addWidget(QLabel("Data Storage Path:"), 0, 0)
-        data_path_row = QHBoxLayout()
-        self.lbl_data_path = QLabel(str(self.catalog_index.data_dir if self.catalog_index else "Default"))
-        self.lbl_data_path.setStyleSheet("font-family: monospace; font-size: 11px; color: #94A3B8;")
-        data_path_row.addWidget(self.lbl_data_path, 1)
-        btn_open_data = QPushButton("Open Folder")
-        btn_open_data.setProperty("class", "secondaryBtn")
-        btn_open_data.clicked.connect(self._open_data_dir)
-        data_path_row.addWidget(btn_open_data)
-        pref_layout.addLayout(data_path_row, 0, 1)
+        pref_layout.addWidget(QLabel("Interface Theme:"), 0, 0)
+        self.combo_theme = QComboBox()
+        self.combo_theme.addItems(["🌙 Dark Theme (Default)", "☀️ Light Theme"])
+        self.combo_theme.currentIndexChanged.connect(self._on_theme_combo_changed)
+        pref_layout.addWidget(self.combo_theme, 0, 1)
 
         pref_layout.addWidget(QLabel("Interface Language:"), 1, 0)
         self.combo_lang = QComboBox()
         self.combo_lang.addItems(["English (US)", "Español", "Français", "Deutsch", "Hindi"])
         pref_layout.addWidget(self.combo_lang, 1, 1)
 
-        pref_layout.addWidget(QLabel("Interface Theme:"), 2, 0)
-        self.combo_theme = QComboBox()
-        self.combo_theme.addItems(["🌙 Dark Theme (Default)", "☀️ Light Theme"])
-        self.combo_theme.currentIndexChanged.connect(self._on_theme_combo_changed)
-        pref_layout.addWidget(self.combo_theme, 2, 1)
+        pref_layout.addWidget(QLabel("Data Storage Path:"), 2, 0)
+        data_path_row = QHBoxLayout()
+        self.lbl_data_path = QLabel(str(self.catalog_index.data_dir if self.catalog_index else "Default"))
+        self.lbl_data_path.setStyleSheet("font-family: monospace; font-size: 11px; color: #94A3B8;")
+        self.lbl_data_path.setWordWrap(True)
+        data_path_row.addWidget(self.lbl_data_path, 1)
+        btn_open_data = QPushButton("↗ Open")
+        btn_open_data.setProperty("class", "secondaryBtn")
+        btn_open_data.clicked.connect(self._open_data_dir)
+        data_path_row.addWidget(btn_open_data)
+        pref_layout.addLayout(data_path_row, 2, 1)
 
-        body_layout.addWidget(pref_box)
+        pref_layout.addWidget(QLabel("Storage Engine Status:"), 3, 0)
+        self.lbl_db_info = QLabel("Indexed Vector Database: Active")
+        self.lbl_db_info.setStyleSheet("font-size: 11px; color: #10B981; font-weight: 600;")
+        pref_layout.addWidget(self.lbl_db_info, 3, 1)
 
-        # Actions Row
-        btn_row = QHBoxLayout()
-        btn_save = QPushButton("💾 Save Settings")
+        grid.addWidget(pref_box, 1, 1)
+
+        container_layout.addLayout(grid)
+
+        # =====================================================================
+        # Bottom Action Bar Card
+        # =====================================================================
+        action_card = QFrame()
+        action_card.setObjectName("settingsActionBar")
+        action_card.setStyleSheet(
+            "QFrame#settingsActionBar { background-color: #1E293B; border: 1px solid #334155; "
+            "border-radius: 8px; padding: 12px 18px; }"
+        )
+        action_layout = QHBoxLayout(action_card)
+        action_layout.setContentsMargins(4, 4, 4, 4)
+        action_layout.setSpacing(12)
+
+        btn_save = QPushButton("💾 Save All Settings")
         btn_save.setProperty("class", "primaryBtn")
+        btn_save.setCursor(Qt.CursorShape.PointingHandCursor)
         btn_save.clicked.connect(self._save_values)
-        btn_row.addWidget(btn_save)
+        action_layout.addWidget(btn_save)
 
         btn_reset = QPushButton("Reset to Defaults")
         btn_reset.setProperty("class", "secondaryBtn")
+        btn_reset.setCursor(Qt.CursorShape.PointingHandCursor)
         btn_reset.clicked.connect(self._reset_defaults)
-        btn_row.addWidget(btn_reset)
-        btn_row.addStretch()
+        action_layout.addWidget(btn_reset)
 
-        body_layout.addLayout(btn_row)
-        body_layout.addStretch()
+        self.lbl_save_status = QLabel("")
+        self.lbl_save_status.setStyleSheet("color: #10B981; font-weight: 600; font-size: 12px; margin-left: 12px;")
+        action_layout.addWidget(self.lbl_save_status)
+        action_layout.addStretch()
 
+        container_layout.addWidget(action_card)
+
+        # Add the full-width settings container to the body
+        body_layout.addWidget(self.settings_container)
+        body_layout.addStretch(1)
         scroll.setWidget(body)
         main_layout.addWidget(scroll, 1)
+
+    def _on_chamfer_slider_changed(self, v: int) -> None:
+        val = v / 100.0
+        label = "Strict" if val <= 0.08 else "Precision" if val <= 0.14 else "Relaxed"
+        self.lbl_chamfer_val.setText(f"{val:.2f} ({label})")
 
     def apply_theme(self, is_dark: bool) -> None:
         self.is_dark = is_dark
@@ -1282,8 +1404,19 @@ class SettingsPage(QWidget):
 
         accent_col = "#38BDF8" if is_dark else "#0284C7"
         muted_col = "#94A3B8" if is_dark else "#64748B"
-        self.lbl_thresh_val.setStyleSheet(f"font-weight: 700; color: {accent_col}; min-width: 40px;")
+        action_bg = "#1E293B" if is_dark else "#FFFFFF"
+        action_border = "#334155" if is_dark else "#E2E8F0"
+
+        self.lbl_thresh_val.setStyleSheet(f"font-weight: 700; color: {accent_col}; min-width: 44px;")
+        self.lbl_chamfer_val.setStyleSheet(f"font-weight: 700; color: {accent_col}; min-width: 100px;")
         self.lbl_data_path.setStyleSheet(f"font-family: monospace; font-size: 11px; color: {muted_col};")
+
+        bar = self.findChild(QFrame, "settingsActionBar")
+        if bar:
+            bar.setStyleSheet(
+                f"QFrame#settingsActionBar {{ background-color: {action_bg}; border: 1px solid {action_border}; "
+                f"border-radius: 8px; padding: 12px 18px; }}"
+            )
 
     def _on_theme_combo_changed(self, index: int) -> None:
         theme_str = "light" if index == 1 else "dark"
@@ -1369,6 +1502,27 @@ class SettingsPage(QWidget):
         topk = int(self.db.get_setting("top_k", "30"))
         self.spin_topk.setValue(topk)
 
+        cand_pool = int(self.db.get_setting("candidate_limit", "50"))
+        self.spin_cand_pool.setValue(cand_pool)
+
+        chamfer_v = int(float(self.db.get_setting("chamfer_threshold", "0.12")) * 100)
+        self.slider_chamfer.setValue(chamfer_v)
+        self._on_chamfer_slider_changed(chamfer_v)
+
+        rerank_val = self.db.get_setting("rerank_mode", "Hybrid Vector + Linework (Recommended)")
+        idx = self.combo_rerank.findText(rerank_val)
+        if idx >= 0:
+            self.combo_rerank.setCurrentIndex(idx)
+
+        ar_val = self.db.get_setting("aspect_ratio_tolerance", "Balanced (±25% aspect ratio tolerance)")
+        ar_idx = self.combo_aspect_ratio.findText(ar_val)
+        if ar_idx >= 0:
+            self.combo_aspect_ratio.setCurrentIndex(ar_idx)
+
+        self.chk_rotations.setChecked(self.db.get_setting("allow_rotations", "1") == "1")
+        self.chk_mirrored.setChecked(self.db.get_setting("allow_mirrored", "1") == "1")
+        self.chk_polarity.setChecked(self.db.get_setting("allow_polarity", "1") == "1")
+
         theme_val = self.db.get_setting("interface_theme", "dark").lower()
         self.combo_theme.blockSignals(True)
         if "light" in theme_val:
@@ -1376,6 +1530,10 @@ class SettingsPage(QWidget):
         else:
             self.combo_theme.setCurrentIndex(0)
         self.combo_theme.blockSignals(False)
+
+        if self.catalog_index:
+            total_vecs = getattr(self.catalog_index, "total_vectors", 0)
+            self.lbl_db_info.setText(f"Indexed Vectors: {total_vecs} | Database: Connected")
 
     def _save_values(self, show_alert: bool = True) -> None:
         if not self.db:
@@ -1401,21 +1559,38 @@ class SettingsPage(QWidget):
 
         self.db.set_setting("similarity_threshold", str(self.slider_thresh.value() / 100.0))
         self.db.set_setting("top_k", str(self.spin_topk.value()))
+        self.db.set_setting("candidate_limit", str(self.spin_cand_pool.value()))
+        self.db.set_setting("chamfer_threshold", str(self.slider_chamfer.value() / 100.0))
+        self.db.set_setting("rerank_mode", self.combo_rerank.currentText())
+        self.db.set_setting("aspect_ratio_tolerance", self.combo_aspect_ratio.currentText())
+        self.db.set_setting("allow_rotations", "1" if self.chk_rotations.isChecked() else "0")
+        self.db.set_setting("allow_mirrored", "1" if self.chk_mirrored.isChecked() else "0")
+        self.db.set_setting("allow_polarity", "1" if self.chk_polarity.isChecked() else "0")
         self.db.set_setting("language", self.combo_lang.currentText())
 
         theme_str = "light" if self.combo_theme.currentIndex() == 1 else "dark"
         self.db.set_setting("interface_theme", theme_str)
         self.theme_changed.emit(theme_str)
 
+        self.lbl_save_status.setText("✓ All settings saved successfully!")
+        QTimer.singleShot(3500, lambda: self.lbl_save_status.setText(""))
+
         if show_alert:
-            QMessageBox.information(self, "Saved", "Settings saved successfully!\nDirectory paths updated.")
+            QMessageBox.information(self, "Settings Saved", "Settings saved successfully!\nDirectory paths and matching criteria updated.")
         self.settings_saved.emit()
 
     def _reset_defaults(self) -> None:
         self.slider_thresh.setValue(75)
         self.spin_topk.setValue(30)
+        self.spin_cand_pool.setValue(50)
+        self.slider_chamfer.setValue(12)
         self.combo_rerank.setCurrentIndex(0)
-        QMessageBox.information(self, "Reset", "Settings reset to defaults. Click 'Save Settings' to apply.")
+        self.combo_aspect_ratio.setCurrentIndex(0)
+        self.chk_rotations.setChecked(True)
+        self.chk_mirrored.setChecked(True)
+        self.chk_polarity.setChecked(True)
+        self.lbl_save_status.setText("Reset to recommended defaults. Click 'Save' to apply.")
+        QMessageBox.information(self, "Reset", "Settings reset to recommended defaults. Click 'Save All Settings' to apply.")
 
     def _open_data_dir(self) -> None:
         if self.catalog_index and self.catalog_index.data_dir.exists():
@@ -2241,24 +2416,62 @@ class AboutPage(QWidget):
         self.about_text.setMaximumHeight(150)
         l1.addWidget(self.about_text)
 
-        # Founders & Key Team Card
+        # Founders & Key Team Card (Consistent, Equal Visual Weight)
         self.founders_box = QGroupBox("Founding Team & Engineering Leadership")
         f_layout = QGridLayout(self.founders_box)
         f_layout.setContentsMargins(18, 22, 18, 16)
-        f_layout.setHorizontalSpacing(24)
-        f_layout.setVerticalSpacing(12)
+        f_layout.setHorizontalSpacing(20)
+        f_layout.setVerticalSpacing(14)
 
-        lbl_f1 = QLabel("<b>Suhel Mulani</b><br><span style='font-size:12px; color:#38BDF8;'>Founder &amp; Chief Technology Officer</span><br>"
-                        "<span style='font-size:11px;'>Email: <a href='mailto:suhel.mulani90@gmail.com'>suhel.mulani90@gmail.com</a> | Mob: +91 9422602386</span>")
+        # Card 1: Suhel Mulani (Founder & CTO)
+        self.fcard1 = QFrame()
+        self.fcard1.setObjectName("founderSubCard")
+        l_fc1 = QVBoxLayout(self.fcard1)
+        l_fc1.setContentsMargins(16, 14, 16, 14)
+        l_fc1.setSpacing(8)
+
+        role_f1 = QLabel("👑 <b>Founder &amp; Chief Technology Officer</b>")
+        role_f1.setStyleSheet("color: #38BDF8; font-size: 12px; font-weight: 700;")
+        name_f1 = QLabel("<span style='font-size:16px; font-weight:800;'>Suhel Mulani</span>")
+        desc_f1 = QLabel("<span style='font-size:11px; color:#94A3B8;'>Lead architect of DINOv2 visual AI matching engine, local FAISS vector indexing, CAD Chamfer geometry alignment, and desktop cryptography.</span>")
+        desc_f1.setWordWrap(True)
+        lbl_f1 = QLabel("✉️ <b>Email:</b> <a href='mailto:suhel.mulani90@gmail.com'>suhel.mulani90@gmail.com</a> | 📱 <b>Mob:</b> +91 9422602386")
         lbl_f1.setWordWrap(True)
         lbl_f1.setOpenExternalLinks(True)
-        f_layout.addWidget(lbl_f1, 0, 0)
+        avail_f1 = QLabel("🕒 Available: Mon–Sun, 9:00 AM – 10:00 PM IST")
+        avail_f1.setStyleSheet("color: #94A3B8; font-size: 11px;")
 
-        lbl_f2 = QLabel("<b>Nihal Mulani</b><br><span style='font-size:12px; color:#38BDF8;'>Co-Founder &amp; Operations Director</span><br>"
-                        "<span style='font-size:11px;'>Email: <a href='mailto:nihal.mulani@gmail.com'>nihal.mulani@gmail.com</a> | Mob: +91 9423591358</span>")
+        l_fc1.addWidget(role_f1)
+        l_fc1.addWidget(name_f1)
+        l_fc1.addWidget(desc_f1)
+        l_fc1.addWidget(lbl_f1)
+        l_fc1.addWidget(avail_f1)
+        f_layout.addWidget(self.fcard1, 0, 0)
+
+        # Card 2: Nihal Mulani (Co-Founder & COO)
+        self.fcard2 = QFrame()
+        self.fcard2.setObjectName("founderSubCard")
+        l_fc2 = QVBoxLayout(self.fcard2)
+        l_fc2.setContentsMargins(16, 14, 16, 14)
+        l_fc2.setSpacing(8)
+
+        role_f2 = QLabel("⚙️ <b>Co-Founder &amp; Operations Director</b>")
+        role_f2.setStyleSheet("color: #34D399; font-size: 12px; font-weight: 700;")
+        name_f2 = QLabel("<span style='font-size:16px; font-weight:800;'>Nihal Mulani</span>")
+        desc_f2 = QLabel("<span style='font-size:11px; color:#94A3B8;'>Directs manufacturing workshop operations, CNC fabricator client relationships, commercial distribution, and field support across sheet metal and stencil fabrication hubs.</span>")
+        desc_f2.setWordWrap(True)
+        lbl_f2 = QLabel("✉️ <b>Email:</b> <a href='mailto:nihal.mulani@gmail.com'>nihal.mulani@gmail.com</a> | 📱 <b>Mob:</b> +91 9423591358")
         lbl_f2.setWordWrap(True)
         lbl_f2.setOpenExternalLinks(True)
-        f_layout.addWidget(lbl_f2, 0, 1)
+        avail_f2 = QLabel("🕒 Available: Mon–Sun, 9:00 AM – 10:00 PM IST")
+        avail_f2.setStyleSheet("color: #94A3B8; font-size: 11px;")
+
+        l_fc2.addWidget(role_f2)
+        l_fc2.addWidget(name_f2)
+        l_fc2.addWidget(desc_f2)
+        l_fc2.addWidget(lbl_f2)
+        l_fc2.addWidget(avail_f2)
+        f_layout.addWidget(self.fcard2, 0, 1)
 
         l1.addWidget(self.founders_box)
 
@@ -2328,6 +2541,13 @@ class AboutPage(QWidget):
             f"background-color: {bg_card}; border: 1px solid {border_card}; border-radius: 8px; padding: 12px; color: {body_color};"
         )
 
+        subcard_bg = "#1E293B" if is_dark else "#F1F5F9"
+        subcard_border = "#334155" if is_dark else "#CBD5E1"
+        if hasattr(self, "fcard1"):
+            self.fcard1.setStyleSheet(f"QFrame#founderSubCard {{ background-color: {subcard_bg}; border: 1px solid {subcard_border}; border-radius: 8px; }}")
+        if hasattr(self, "fcard2"):
+            self.fcard2.setStyleSheet(f"QFrame#founderSubCard {{ background-color: {subcard_bg}; border: 1px solid {subcard_border}; border-radius: 8px; }}")
+
 
 # ==============================================================================
 # 10. ContactPage (Contact Us & Technical Support)
@@ -2386,9 +2606,11 @@ class ContactPage(QWidget):
         l_c1.setContentsMargins(16, 14, 16, 14)
         l_c1.setSpacing(8)
 
-        role1 = QLabel("👑 <b>Founder &amp; Lead Engineer</b>")
+        role1 = QLabel("👑 <b>Founder &amp; Chief Technology Officer</b>")
         role1.setStyleSheet("color: #38BDF8; font-size: 12px; font-weight: 700;")
         name1 = QLabel("<span style='font-size:16px; font-weight:800;'>Suhel Mulani</span>")
+        desc1 = QLabel("<span style='font-size:11px; color:#94A3B8;'>Engineering, algorithms, local vector index, and cryptographic authority.</span>")
+        desc1.setWordWrap(True)
         email1 = QLabel("✉️ <b>Email:</b> suhel.mulani90@gmail.com")
         mob1 = QLabel("📱 <b>Mobile:</b> +91 9422602386")
         hours1 = QLabel("🕒 Available: Mon–Sun, 9:00 AM – 10:00 PM IST")
@@ -2396,6 +2618,7 @@ class ContactPage(QWidget):
 
         l_c1.addWidget(role1)
         l_c1.addWidget(name1)
+        l_c1.addWidget(desc1)
         l_c1.addWidget(email1)
         l_c1.addWidget(mob1)
         l_c1.addWidget(hours1)
@@ -2433,9 +2656,11 @@ class ContactPage(QWidget):
         l_c2.setContentsMargins(16, 14, 16, 14)
         l_c2.setSpacing(8)
 
-        role2 = QLabel("⚙️ <b>Co-Founder &amp; Operations</b>")
+        role2 = QLabel("⚙️ <b>Co-Founder &amp; Operations Director</b>")
         role2.setStyleSheet("color: #34D399; font-size: 12px; font-weight: 700;")
         name2 = QLabel("<span style='font-size:16px; font-weight:800;'>Nihal Mulani</span>")
+        desc2 = QLabel("<span style='font-size:11px; color:#94A3B8;'>Manufacturing operations, client relationships, commercial pricing, and workshop rollouts.</span>")
+        desc2.setWordWrap(True)
         email2 = QLabel("✉️ <b>Email:</b> nihal.mulani@gmail.com")
         mob2 = QLabel("📱 <b>Mobile:</b> +91 9423591358")
         hours2 = QLabel("🕒 Available: Mon–Sun, 9:00 AM – 10:00 PM IST")
@@ -2443,6 +2668,7 @@ class ContactPage(QWidget):
 
         l_c2.addWidget(role2)
         l_c2.addWidget(name2)
+        l_c2.addWidget(desc2)
         l_c2.addWidget(email2)
         l_c2.addWidget(mob2)
         l_c2.addWidget(hours2)
@@ -2475,14 +2701,24 @@ class ContactPage(QWidget):
 
         body_layout.addWidget(self.contacts_box)
 
-        # 2. Report Composer Card
+        # 2. Contact & Support Submission Form
         self.comp_box = QGroupBox("Send Message or Report a Problem")
         comp_layout = QGridLayout(self.comp_box)
         comp_layout.setContentsMargins(18, 22, 18, 16)
         comp_layout.setHorizontalSpacing(20)
         comp_layout.setVerticalSpacing(12)
 
-        comp_layout.addWidget(QLabel("Inquiry Category:"), 0, 0)
+        comp_layout.addWidget(QLabel("Full Name:"), 0, 0)
+        self.txt_name = QLineEdit()
+        self.txt_name.setPlaceholderText("Your Full Name (e.g. Javed Akhtar or Rajesh Kumar)")
+        comp_layout.addWidget(self.txt_name, 0, 1)
+
+        comp_layout.addWidget(QLabel("Email Address:"), 1, 0)
+        self.txt_email = QLineEdit()
+        self.txt_email.setPlaceholderText("Your Email Address (e.g. workshop@sheetmetal.com)")
+        comp_layout.addWidget(self.txt_email, 1, 1)
+
+        comp_layout.addWidget(QLabel("Inquiry Category:"), 2, 0)
         self.combo_cat = QComboBox()
         self.combo_cat.addItems([
             "Search Accuracy & Linework Matching",
@@ -2492,26 +2728,39 @@ class ContactPage(QWidget):
             "Multi-Seat Volume Commercial Pricing",
             "Software Crash or Performance Optimization",
         ])
-        comp_layout.addWidget(self.combo_cat, 0, 1)
+        comp_layout.addWidget(self.combo_cat, 2, 1)
 
-        comp_layout.addWidget(QLabel("Problem / Subject:"), 1, 0)
+        comp_layout.addWidget(QLabel("Problem / Subject:"), 3, 0)
         self.txt_summary = QLineEdit()
         self.txt_summary.setPlaceholderText("Brief summary of your question or issue...")
-        comp_layout.addWidget(self.txt_summary, 1, 1)
+        comp_layout.addWidget(self.txt_summary, 3, 1)
 
-        comp_layout.addWidget(QLabel("Detailed Message:"), 2, 0)
+        comp_layout.addWidget(QLabel("Detailed Message:"), 4, 0)
         self.txt_desc = QTextEdit()
         self.txt_desc.setMaximumHeight(100)
         self.txt_desc.setPlaceholderText("Describe your request in detail. We typically respond within 2 to 4 hours.")
-        comp_layout.addWidget(self.txt_desc, 2, 1)
+        comp_layout.addWidget(self.txt_desc, 4, 1)
+
+        # Honeypot field (hidden)
+        self._txt_hp = QLineEdit()
+        self._txt_hp.setVisible(False)
+        comp_layout.addWidget(self._txt_hp, 5, 1)
 
         row_send = QHBoxLayout()
-        btn_send_both = QPushButton("✉️ Send Message to Founders")
-        btn_send_both.setProperty("class", "primaryBtn")
+        row_send.setSpacing(10)
+
+        btn_submit = QPushButton("✉️ Submit Inquiry to Database")
+        btn_submit.setProperty("class", "primaryBtn")
+        btn_submit.clicked.connect(self._submit_inquiry)
+        row_send.addWidget(btn_submit)
+
+        btn_send_both = QPushButton("📧 Open in Email Client")
+        btn_send_both.setProperty("class", "secondaryBtn")
         btn_send_both.clicked.connect(self._email_founders)
         row_send.addWidget(btn_send_both)
+
         row_send.addStretch()
-        comp_layout.addLayout(row_send, 3, 1)
+        comp_layout.addLayout(row_send, 5, 1)
 
         body_layout.addWidget(self.comp_box)
 
@@ -2522,6 +2771,71 @@ class ContactPage(QWidget):
 
         self.scroll.setWidget(self.body)
         main_layout.addWidget(self.scroll, 1)
+
+    def _submit_inquiry(self) -> None:
+        """Validates and persists the contact form submission to the database."""
+        name = self.txt_name.text().strip()
+        email = self.txt_email.text().strip()
+        subject = self.txt_summary.text().strip()
+        message = self.txt_desc.toPlainText().strip()
+        honeypot = self._txt_hp.text().strip()
+
+        # 1. Honeypot check
+        if honeypot:
+            return  # Silently discard automated spam bot submissions
+
+        # 2. Validation
+        if not name or not email or not subject or not message:
+            QMessageBox.warning(self, "Incomplete Form", "Please fill in all required fields: Full Name, Email, Subject, and Message.")
+            return
+
+        import re
+        if not re.match(r"^[a-zA-Z\s'\.\-]+$", name) or len(name) < 2 or len(name) > 100:
+            QMessageBox.warning(self, "Invalid Name", "Full name must be 2 to 100 characters and contain only letters, spaces, hyphens, and apostrophes.")
+            return
+
+        if not re.match(r"^[^\s@]+@[^\s@]+\.[^\s@]+$", email) or len(email) > 255:
+            QMessageBox.warning(self, "Invalid Email", "Please enter a valid email address.")
+            return
+
+        if len(subject) < 3 or len(subject) > 200:
+            QMessageBox.warning(self, "Invalid Subject", "Subject must be between 3 and 200 characters.")
+            return
+
+        if len(message) < 10 or len(message) > 5000:
+            QMessageBox.warning(self, "Invalid Message", "Message must be between 10 and 5,000 characters.")
+            return
+
+        # Check for disallowed script or HTML injection
+        if re.search(r"<\s*(?:script|iframe|object|embed)\b[^>]*>|javascript:", message, re.IGNORECASE):
+            QMessageBox.warning(self, "Invalid Content", "Executable scripts or embedded HTML tags are strictly prohibited.")
+            return
+
+        # 3. Save to database using parameterized query
+        try:
+            from design_matcher.app.core.db import CatalogDatabase
+            db = CatalogDatabase()
+            sub_id = db.save_contact_submission(name=name, email=email, subject=subject, message=message)
+            QMessageBox.information(
+                self,
+                "Inquiry Submitted Successfully",
+                f"Thank you, {name}!\n\n"
+                f"Your inquiry has been securely saved to the database.\n"
+                f"Reference Ticket ID: {sub_id}\n\n"
+                f"Our engineering team will review it and reply within 2 to 4 hours."
+            )
+            # Clear form
+            self.txt_name.clear()
+            self.txt_email.clear()
+            self.txt_summary.clear()
+            self.txt_desc.clear()
+        except Exception as exc:
+            logger.error("Failed to save contact submission: %s", exc)
+            QMessageBox.critical(
+                self,
+                "Submission Error",
+                "An unexpected database error occurred while saving your inquiry. Please try again or reach out directly to suhel.mulani90@gmail.com."
+            )
 
     def apply_theme(self, is_dark: bool) -> None:
         self.is_dark = is_dark

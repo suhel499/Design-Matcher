@@ -61,6 +61,7 @@ class SearchResult:
     retrieval_similarity: Optional[float] = None
     is_mirrored: bool = False
     raw_dxf_match: Optional[Any] = None
+    aspect_ratio: Optional[float] = None
 
 
 def dxf_match_to_search_result(m: Any) -> SearchResult:
@@ -94,6 +95,7 @@ def dxf_match_to_search_result(m: Any) -> SearchResult:
         retrieval_similarity=getattr(m, "retrieval_similarity", None),
         is_mirrored=getattr(m, "is_mirrored", False),
         raw_dxf_match=m,
+        aspect_ratio=getattr(m, "aspect_ratio", None),
     )
 
 
@@ -198,7 +200,18 @@ class DesignSearcher:
         if include_dxf is None:
             include_dxf = self.index.db.get_setting("include_dxf", "true").lower() in ("true", "1", "yes")
 
-        rotations = [0, 90, 180, 270] if test_rotations else [0]
+        # Load configurable matching criteria from settings
+        allow_rot = True
+        allow_mirr = True
+        allow_pol = True
+        rerank_strat = "Hybrid Vector + Linework (Recommended)"
+        if hasattr(self.index, "db") and self.index.db:
+            allow_rot = self.index.db.get_setting("allow_rotations", "1") == "1"
+            allow_mirr = self.index.db.get_setting("allow_mirrored", "1") == "1"
+            allow_pol = self.index.db.get_setting("allow_polarity", "1") == "1"
+            rerank_strat = self.index.db.get_setting("rerank_mode", "Hybrid Vector + Linework (Recommended)")
+
+        rotations = [0, 90, 180, 270] if (test_rotations and allow_rot) else [0]
 
         # Extract multi-scale query subregions (e.g. Full, Right Section, Center Section, Left Section)
         query_subregions = detect_cutout_subpanels(mask)
@@ -209,7 +222,7 @@ class DesignSearcher:
         # Each entry: (mask_224, angle, is_inverted, region_label, region_mask)
         query_variants: List[Tuple[np.ndarray, int, bool, str, np.ndarray]] = []
         for reg_idx, (reg_lbl, reg_m) in enumerate(query_subregions):
-            polarities = [False, True] if reg_idx == 0 else [False]
+            polarities = [False, True] if (reg_idx == 0 and allow_pol) else [False]
             for is_inv in polarities:
                 base_m = cv2.bitwise_not(reg_m) if is_inv else reg_m
                 for angle in rotations:
@@ -217,8 +230,8 @@ class DesignSearcher:
                     lbox_m = letterbox_image(rot_m, target_size=(224, 224), pad_value=0)
                     query_variants.append((lbox_m, angle, is_inv, reg_lbl, reg_m))
 
-                    # Flip mirroring augmentation for full mask query
-                    if reg_idx == 0:
+                    # Flip mirroring augmentation for full mask query if enabled
+                    if reg_idx == 0 and allow_mirr:
                         mirrored_m = cv2.flip(rot_m, 1)
                         lbox_mirr = letterbox_image(mirrored_m, target_size=(224, 224), pad_value=0)
                         query_variants.append((lbox_mirr, angle, is_inv, f"{reg_lbl}_Mirrored", reg_m))
@@ -357,8 +370,15 @@ class DesignSearcher:
                     iou_score = round(iou_val, 4)
                     chamfer_score = round(chamfer_val, 4)
 
-                    # Composite weighting: 50% feature embedding, 30% pixel IoU, 20% edge Chamfer
-                    composite_score = 0.50 * cos_score + 0.30 * iou_val + 0.20 * chamfer_val
+                    # Dynamic composite weighting based on user-configured reranking strategy
+                    rerank_lower = rerank_strat.lower()
+                    if "exact linework" in rerank_lower:
+                        composite_score = 0.20 * cos_score + 0.20 * iou_val + 0.60 * chamfer_val
+                    elif "fast vector" in rerank_lower:
+                        composite_score = 0.80 * cos_score + 0.20 * iou_val
+                    else:
+                        # Balanced Hybrid: 50% feature embedding, 30% pixel IoU, 20% edge Chamfer
+                        composite_score = 0.50 * cos_score + 0.30 * iou_val + 0.20 * chamfer_val
 
             cand["final_score"] = composite_score
             cand["iou"] = iou_score
@@ -404,6 +424,19 @@ class DesignSearcher:
                 except Exception:
                     pass
             d_code = m.get("design_code") or m.get("design_number")
+
+            # Calculate design aspect ratio (width / height)
+            calc_ar: Optional[float] = None
+            if m.get("bbox") and len(m["bbox"]) == 4:
+                bh = max(1, m["bbox"][2] - m["bbox"][0])
+                bw = max(1, m["bbox"][3] - m["bbox"][1])
+                calc_ar = round(float(bw) / float(bh), 2)
+            elif m.get("aspect_ratio"):
+                try:
+                    calc_ar = round(float(m["aspect_ratio"]), 2)
+                except Exception:
+                    pass
+
             return SearchResult(
                 rank=rank_idx,
                 score=round(f_score, 4),
@@ -428,6 +461,7 @@ class DesignSearcher:
                 polarity_variant=int(m.get("polarity_variant", 0)),
                 entity_count=int(m.get("entity_count", 0)),
                 design_index_info=m.get("design_index_info"),
+                aspect_ratio=calc_ar,
             )
 
         # Add top DXF candidates

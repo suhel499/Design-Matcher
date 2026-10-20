@@ -242,6 +242,22 @@ class CatalogDatabase:
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
                 """
             )
+
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS contact_submissions (
+                    id VARCHAR(64) PRIMARY KEY,
+                    name VARCHAR(150) NOT NULL,
+                    email VARCHAR(255) NOT NULL,
+                    subject VARCHAR(255) NOT NULL,
+                    message TEXT NOT NULL,
+                    status VARCHAR(32) NOT NULL DEFAULT 'NEW',
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    INDEX idx_contact_status (status),
+                    INDEX idx_contact_created (created_at)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+                """
+            )
             # Auto-sync from SQLite if MySQL tables are empty and SQLite database has indexed data
             if self.db_path.exists():
                 try:
@@ -380,6 +396,21 @@ class CatalogDatabase:
                 );
                 """
             )
+
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS contact_submissions (
+                    id TEXT PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    email TEXT NOT NULL,
+                    subject TEXT NOT NULL,
+                    message TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'NEW',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+                """
+            )
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_contact_status ON contact_submissions(status);")
 
             # Migration check for DXF support columns on tiles table
             cursor.execute("PRAGMA table_info(tiles);")
@@ -743,4 +774,54 @@ class CatalogDatabase:
         with self._get_connection() as conn:
             conn.execute("DELETE FROM search_history")
             conn.commit()
+
+    def save_contact_submission(
+        self,
+        name: str,
+        email: str,
+        subject: str,
+        message: str,
+    ) -> str:
+        """
+        Saves a contact query or inquiry to the database using parameterized queries.
+        Returns the generated unique submission ID.
+        """
+        import uuid
+        submission_id = str(uuid.uuid4())
+        with self._get_connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO contact_submissions (id, name, email, subject, message, status)
+                VALUES (?, ?, ?, ?, ?, 'NEW')
+                """,
+                (submission_id, name.strip(), email.strip().lower(), subject.strip(), message.strip()),
+            )
+            conn.commit()
+            return submission_id
+
+    def get_contact_submissions(self, status: Optional[str] = None, limit: int = 50) -> list[dict[str, Any]]:
+        """Retrieves saved contact queries, optionally filtered by status ('NEW', 'IN_PROGRESS', 'RESOLVED')."""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            if status:
+                cursor.execute(
+                    "SELECT * FROM contact_submissions WHERE status = ? ORDER BY created_at DESC LIMIT ?",
+                    (status.upper(), limit),
+                )
+            else:
+                cursor.execute(
+                    "SELECT * FROM contact_submissions ORDER BY created_at DESC LIMIT ?",
+                    (limit,),
+                )
+            return [dict(row) for row in cursor.fetchall()]
+
+    def update_contact_submission_status(self, submission_id: str, status: str) -> None:
+        """Updates the status of a contact submission."""
+        with self._get_connection() as conn:
+            conn.execute(
+                "UPDATE contact_submissions SET status = ? WHERE id = ?",
+                (status.upper(), submission_id),
+            )
+            conn.commit()
+
 
