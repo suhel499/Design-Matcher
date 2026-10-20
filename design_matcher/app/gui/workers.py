@@ -118,16 +118,34 @@ class PreprocessWorker(QThread):
         self,
         bgr_img: np.ndarray,
         crop: bool = True,
+        mode: str = "auto",
+        enhance: bool = True,
+        threshold_offset: int = 0,
+        invert: bool = False,
+        trim_border_pct: float = 0.0,
         parent: Optional[QObject] = None,
     ) -> None:
         super().__init__(parent)
         self.bgr_img = bgr_img
         self.crop = crop
+        self.mode = mode
+        self.enhance = enhance
+        self.threshold_offset = threshold_offset
+        self.invert = invert
+        self.trim_border_pct = trim_border_pct
 
     def run(self) -> None:
         """Executes stencil normalization in background thread."""
         try:
-            mask, info = normalize_stencil(self.bgr_img, crop=self.crop)
+            mask, info = normalize_stencil(
+                self.bgr_img,
+                crop=self.crop,
+                mode=self.mode,
+                enhance=self.enhance,
+                threshold_offset=self.threshold_offset,
+                invert=self.invert,
+                trim_border_pct=self.trim_border_pct,
+            )
             self.finished_signal.emit(mask, info)
         except Exception as exc:
             logger.exception("PreprocessWorker error: %s", exc)

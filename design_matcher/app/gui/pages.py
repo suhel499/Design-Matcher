@@ -2564,10 +2564,11 @@ class ContactPage(QWidget):
     """
     back_requested = Signal()
 
-    def __init__(self, parent: Optional[QWidget] = None) -> None:
+    def __init__(self, db: Optional[Any] = None, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
         self.setObjectName("pageRoot")
         self.is_dark = True
+        self.db = db
         self._setup_ui()
         self.apply_theme(True)
 
@@ -2813,8 +2814,14 @@ class ContactPage(QWidget):
 
         # 3. Save to database using parameterized query
         try:
-            from design_matcher.app.core.db import CatalogDatabase
-            db = CatalogDatabase()
+            if getattr(self, "db", None):
+                db = self.db
+            else:
+                try:
+                    from app.core.db import CatalogDatabase
+                except ImportError:
+                    from design_matcher.app.core.db import CatalogDatabase
+                db = CatalogDatabase()
             sub_id = db.save_contact_submission(name=name, email=email, subject=subject, message=message)
             QMessageBox.information(
                 self,

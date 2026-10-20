@@ -1074,7 +1074,7 @@ class MainWindow(QMainWindow):
         self.main_stack.addWidget(self.about_page)
 
         # Page 9: Contact Us & Technical Support
-        self.contact_page = ContactPage(parent=self.main_stack)
+        self.contact_page = ContactPage(db=self.catalog_index.db, parent=self.main_stack)
         self.contact_page.back_requested.connect(lambda: self.open_page(0))
         self.main_stack.addWidget(self.contact_page)
         self.support_page = self.contact_page  # backwards compatibility alias
@@ -1399,7 +1399,14 @@ class MainWindow(QMainWindow):
 
         # In headless / offscreen test mode, run synchronously
         if os.environ.get("QT_QPA_PLATFORM") == "offscreen":
-            mask, info = normalize_stencil(bgr, crop=crop)
+            mask, info = normalize_stencil(
+                bgr,
+                crop=crop,
+                mode=getattr(self, "current_mode", "auto"),
+                enhance=getattr(self, "enhance_enabled", True),
+                threshold_offset=0,
+                invert=getattr(self, "mask_inverted", False),
+            )
             self._on_preprocess_finished(mask, info)
             return
 
@@ -1411,7 +1418,15 @@ class MainWindow(QMainWindow):
         self.search_btn.setEnabled(False)
         self.status_bar.showMessage("Normalizing stencil mask in background...")
 
-        self.preprocess_worker = PreprocessWorker(bgr, crop=crop, parent=self)
+        self.preprocess_worker = PreprocessWorker(
+            bgr,
+            crop=crop,
+            mode=getattr(self, "current_mode", "auto"),
+            enhance=getattr(self, "enhance_enabled", True),
+            threshold_offset=0,
+            invert=getattr(self, "mask_inverted", False),
+            parent=self,
+        )
         self.preprocess_worker.finished_signal.connect(self._on_preprocess_finished)
         self.preprocess_worker.error_signal.connect(self._on_preprocess_error)
         self.preprocess_worker.start()

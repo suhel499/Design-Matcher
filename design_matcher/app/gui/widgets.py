@@ -1744,8 +1744,24 @@ class AdvancedCropStudio(QDialog):
         self.cropped_bgr = crop
         self.warped_bgr = crop
 
+        mode_keys = ["auto", "raw_sheet", "installed_product", "backlit", "mixed_lighting", "blurry"]
+        mode_idx = self.mode_combo.currentIndex() if hasattr(self, "mode_combo") else 0
+        mode = mode_keys[mode_idx] if 0 <= mode_idx < len(mode_keys) else "auto"
+        offset = self.thresh_slider.value() if hasattr(self, "thresh_slider") else 0
+        trim_pct = 0.02 if (hasattr(self, "trim_check") and self.trim_check.isChecked()) else 0.0
+        enh = self.enhance_check.isChecked() if hasattr(self, "enhance_check") else True
+        inv = getattr(self, "is_inverted", False)
+
         # Pipeline order: full-res crop/warp -> optional unsharp -> normalize_stencil(crop, crop=False)
-        mask, info = normalize_stencil(crop, crop=False)
+        mask, info = normalize_stencil(
+            crop,
+            crop=False,
+            mode=mode,
+            enhance=enh,
+            threshold_offset=offset,
+            invert=inv,
+            trim_border_pct=trim_pct,
+        )
         self.final_mask = mask
 
         pixmap = cv2_to_qpixmap(mask)
@@ -1785,7 +1801,23 @@ class AdvancedCropStudio(QDialog):
         if crop is not None and crop.size > 0:
             self.cropped_bgr = crop
             self.warped_bgr = crop
-            mask, info = normalize_stencil(crop, crop=False)
+            mode_keys = ["auto", "raw_sheet", "installed_product", "backlit", "mixed_lighting", "blurry"]
+            mode_idx = self.mode_combo.currentIndex() if hasattr(self, "mode_combo") else 0
+            mode = mode_keys[mode_idx] if 0 <= mode_idx < len(mode_keys) else "auto"
+            offset = self.thresh_slider.value() if hasattr(self, "thresh_slider") else 0
+            trim_pct = 0.02 if (hasattr(self, "trim_check") and self.trim_check.isChecked()) else 0.0
+            enh = self.enhance_check.isChecked() if hasattr(self, "enhance_check") else True
+            inv = getattr(self, "is_inverted", False)
+
+            mask, info = normalize_stencil(
+                crop,
+                crop=False,
+                mode=mode,
+                enhance=enh,
+                threshold_offset=offset,
+                invert=inv,
+                trim_border_pct=trim_pct,
+            )
             self.final_mask = mask
             self.accept()
         else:

@@ -104,7 +104,17 @@ class MySQLConnectionWrapper:
 class CatalogDatabase:
     """Manages metadata storage (MySQL primary, SQLite fallback) for indexed catalog PDFs, pages, and tiles."""
 
-    def __init__(self, db_path: Path | str, use_mysql: Optional[bool] = None) -> None:
+    def __init__(self, db_path: Optional[Path | str] = None, use_mysql: Optional[bool] = None) -> None:
+        if db_path is None:
+            try:
+                from app.core.licensing.hardware import get_secure_app_data_dir
+                db_path = get_secure_app_data_dir() / "catalog_metadata.db"
+            except Exception:
+                try:
+                    from design_matcher.app.core.licensing.hardware import get_secure_app_data_dir
+                    db_path = get_secure_app_data_dir() / "catalog_metadata.db"
+                except Exception:
+                    db_path = Path.home() / ".design_matcher" / "catalog_metadata.db"
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
 

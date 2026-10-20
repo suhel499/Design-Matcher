@@ -65,14 +65,25 @@ def equalize(gray: np.ndarray) -> np.ndarray:
 
 
 def detect_polarity(binary: np.ndarray) -> bool:
-    """True if `binary` must be inverted so that white = metal."""
-    border = np.concatenate([binary[0, :], binary[-1, :], binary[:, 0], binary[:, -1]])
-    white_border = (border == 255).mean()
-    if white_border > 0.7:
-        return True
-    if white_border < 0.3:
+    """
+    Returns True if `binary` must be inverted so that solid metal = 255 (white) and cutouts = 0 (black).
+    In real laser-cut panels, the perimeter border is solid metal.
+    If the perimeter border is already white (> 0.50), polarity is standard -> returns False.
+    If the perimeter border is predominantly black (<= 0.50), metal is currently black -> returns True.
+    """
+    if binary is None or binary.size == 0:
         return False
-    return (binary == 255).mean() < 0.5
+    h, w = binary.shape[:2]
+    bw = max(2, int(w * 0.03))
+    bh = max(2, int(h * 0.03))
+    border = np.concatenate([
+        binary[:bh, :].ravel(),
+        binary[-bh:, :].ravel(),
+        binary[:, :bw].ravel(),
+        binary[:, -bw:].ravel(),
+    ])
+    white_border = float((border == 255).mean())
+    return white_border <= 0.45
 
 
 def remove_specks(mask: np.ndarray, min_area: int) -> np.ndarray:
@@ -90,8 +101,9 @@ def remove_specks(mask: np.ndarray, min_area: int) -> np.ndarray:
 def is_cad_wireframe(bgr: np.ndarray) -> Tuple[bool, float]:
     """
     Detects if an image is a CAD viewport / DXF screenshot:
-    - High background uniformity (> 80% of pixels match background median)
-    - Low stroke density (< 20% non-background vector strokes)
+    - High background uniformity (> 75% of pixels match background median)
+    - Very low border variance (standard deviation < 8.0 on digital/vector canvases)
+    - Background median intensity either very high (> 205 for paper/cream canvas) or very low (< 50 for dark modelspace)
     Returns (is_cad, bg_median_intensity).
     """
     if bgr is None or bgr.size == 0:
@@ -100,52 +112,79 @@ def is_cad_wireframe(bgr: np.ndarray) -> Tuple[bool, float]:
     gray = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY) if bgr.ndim == 3 else bgr.copy()
     border_px = np.concatenate([gray[0, :], gray[-1, :], gray[:, 0], gray[:, -1]])
     bg_median = float(np.median(border_px))
+    border_std = float(np.std(border_px))
 
-    # Proportion of entire image matching background median
-    bg_ratio = float(np.mean(np.abs(gray.astype(np.float32) - bg_median) <= 28.0))
-    is_cad = bg_ratio >= 0.80
+    # CAD viewports have pure flat digital backgrounds (border std < 8.0)
+    # and extreme background brightness (> 205 for paper/cream / < 50 for dark modelspace)
+    if border_std > 8.0 or (50.0 <= bg_median <= 205.0):
+        return False, bg_median
+
+    bg_ratio = float(np.mean(np.abs(gray.astype(np.float32) - bg_median) <= 18.0))
+    is_cad = (bg_ratio >= 0.75) and (border_std < 8.0)
     return is_cad, bg_median
 
 
-def normalize_stencil(bgr: np.ndarray, crop: bool = True) -> Tuple[np.ndarray, dict]:
+def compute_otsu_metrics(gray: np.ndarray) -> Tuple[int, float]:
+    """Computes optimal Otsu threshold and between-class variance ratio (eta in [0, 1])."""
+    hist = cv2.calcHist([gray], [0], None, [256], [0, 256]).ravel()
+    prob = hist / float(gray.size)
+    cum_prob = np.cumsum(prob)
+    cum_mean = np.cumsum(prob * np.arange(256))
+    global_mean = cum_mean[-1]
+
+    sigma_b = np.zeros(256)
+    valid = (cum_prob > 0) & (cum_prob < 1)
+    sigma_b[valid] = ((global_mean * cum_prob[valid] - cum_mean[valid]) ** 2) / (cum_prob[valid] * (1 - cum_prob[valid]))
+    t_opt = int(np.argmax(sigma_b))
+    total_var = np.sum(prob * (np.arange(256) - global_mean) ** 2)
+    eta = float(sigma_b[t_opt] / max(total_var, 1e-6))
+    return t_opt, eta
+
+
+def normalize_stencil(
+    bgr: np.ndarray,
+    crop: bool = True,
+    mode: str = "auto",
+    enhance: bool = True,
+    threshold_offset: int = 0,
+    invert: bool = False,
+    trim_border_pct: float = 0.0,
+) -> Tuple[np.ndarray, dict]:
     """
-    Normalizes a customer photo or catalog page into a binary stencil mask:
+    Normalizes a customer photo, panel crop, or catalog page into an accurate, clean, production-quality stencil mask:
     - Automatically detects CAD / DXF screenshots and preserves wireframe cutouts
-    - Adaptive CLAHE lighting & contrast equalization for camera photos
-    - Otsu's thresholding
-    - Border polarity detection ensuring White (255) = solid metal, Black (0) = cutouts
-    - Speck noise removal
-    - Crop to bounding box of largest white metal component if crop=True
+    - Adaptive edge-preserving bilateral filtering to suppress paint grain and camera noise
+    - Precision Otsu thresholding calibrated to CNC laser-cut apertures
+    - Clean outer perimeter frame enforcement and corner pin suppression for user crops
+    - Guaranteed standard polarity: solid metal = 255 (White), laser cutouts = 0 (Black)
     Returns (mask, {"polarity_inverted": bool, "is_cad": bool}).
     """
     if bgr is None or bgr.size == 0:
         return np.zeros((224, 224), dtype=np.uint8), {"polarity_inverted": False, "is_cad": False}
 
-    gray = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY) if bgr.ndim == 3 else bgr.copy()
+    # 1. CAD Wireframe Detection & Conversion
     is_cad, bg_median = is_cad_wireframe(bgr)
-
     if is_cad:
-        # Support both grayscale and multi-channel CAD screenshots (colored layer lines)
+        gray_cad = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY) if bgr.ndim == 3 else bgr.copy()
         if bgr.ndim == 3:
             border_bgr = np.concatenate([bgr[0, :, :], bgr[-1, :, :], bgr[:, 0, :], bgr[:, -1, :]], axis=0)
             bg_bgr = np.median(border_bgr, axis=0)
             diff = np.max(np.abs(bgr.astype(np.float32) - bg_bgr), axis=2)
         else:
-            diff = np.abs(gray.astype(np.float32) - bg_median)
+            diff = np.abs(gray_cad.astype(np.float32) - bg_median)
 
         strokes = (diff > 25.0).astype(np.uint8) * 255
-
-        k_size = max(3, int(round(min(gray.shape) * 0.006)))
+        k_size = max(3, int(round(min(gray_cad.shape) * 0.006)))
         if k_size % 2 == 0:
             k_size += 1
         thick_strokes = cv2.dilate(strokes, cv2.getStructuringElement(cv2.MORPH_RECT, (k_size, k_size)))
 
         if bg_median >= 128.0:
             mask = 255 - thick_strokes
-            inverted = False
+            inv_cad = False
         else:
             mask = thick_strokes
-            inverted = True
+            inv_cad = True
 
         if crop:
             coords = cv2.findNonZero(thick_strokes)
@@ -156,28 +195,120 @@ def normalize_stencil(bgr: np.ndarray, crop: bool = True) -> Tuple[np.ndarray, d
                     max(0, y - pad): min(mask.shape[0], y + h + pad),
                     max(0, x - pad): min(mask.shape[1], x + w + pad),
                 ]
+        if invert:
+            mask = cv2.bitwise_not(mask)
+            inv_cad = not inv_cad
+        return mask, {"polarity_inverted": inv_cad, "is_cad": True}
 
-        return mask, {"polarity_inverted": inverted, "is_cad": True}
-
-
-    # Standard camera photo pipeline
-    eq = equalize(gray)
-    _, binary = cv2.threshold(eq, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-    inverted = detect_polarity(binary)
-    if inverted:
-        binary = cv2.bitwise_not(binary)
-    mask = remove_specks(binary, min_area=max(8, gray.size // 20000))
+    # 2. Camera Photo Pipeline
+    processed = bgr.copy()
+    was_dark_metal = False
 
     if crop:
-        n, lab, stats, _ = cv2.connectedComponentsWithStats((mask == 255).astype(np.uint8), 8)
-        if n > 1:
-            i = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))
-            x = int(stats[i, cv2.CC_STAT_LEFT])
-            y = int(stats[i, cv2.CC_STAT_TOP])
-            w = int(stats[i, cv2.CC_STAT_WIDTH])
-            h = int(stats[i, cv2.CC_STAT_HEIGHT])
-            mask = mask[y : y + h, x : x + w]
-    return mask, {"polarity_inverted": inverted, "is_cad": False}
+        gray_full = cv2.cvtColor(processed, cv2.COLOR_BGR2GRAY) if processed.ndim == 3 else processed.copy()
+        _, bin_full = cv2.threshold(gray_full, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        border_px = np.concatenate([bin_full[0, :], bin_full[-1, :], bin_full[:, 0], bin_full[:, -1]])
+        white_border = float((border_px == 255).mean())
+
+        if white_border > 0.65:
+            # White backdrop around dark metal panel (e.g. img_dark_on_light)
+            bin_inv = cv2.bitwise_not(bin_full)
+            n, lab, stats, _ = cv2.connectedComponentsWithStats((bin_inv == 255).astype(np.uint8), 8)
+            if n > 1:
+                i = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))
+                x, y, w, h = int(stats[i, cv2.CC_STAT_LEFT]), int(stats[i, cv2.CC_STAT_TOP]), int(stats[i, cv2.CC_STAT_WIDTH]), int(stats[i, cv2.CC_STAT_HEIGHT])
+                if w < gray_full.shape[1] - 8 and h < gray_full.shape[0] - 8 and w >= 20 and h >= 20:
+                    processed = processed[y : y + h, x : x + w]
+                    was_dark_metal = True
+        elif white_border < 0.35:
+            # Dark backdrop around light metal panel (e.g. img_light_on_dark)
+            n, lab, stats, _ = cv2.connectedComponentsWithStats((bin_full == 255).astype(np.uint8), 8)
+            if n > 1:
+                i = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))
+                x, y, w, h = int(stats[i, cv2.CC_STAT_LEFT]), int(stats[i, cv2.CC_STAT_TOP]), int(stats[i, cv2.CC_STAT_WIDTH]), int(stats[i, cv2.CC_STAT_HEIGHT])
+                if w < gray_full.shape[1] - 8 and h < gray_full.shape[0] - 8 and w >= 20 and h >= 20:
+                    processed = processed[y : y + h, x : x + w]
+                    was_dark_metal = False
+
+    if trim_border_pct > 0.0:
+        hp, wp = processed.shape[:2]
+        ty = max(1, int(hp * trim_border_pct))
+        tx = max(1, int(wp * trim_border_pct))
+        if hp > 2 * ty + 10 and wp > 2 * tx + 10:
+            processed = processed[ty : hp - ty, tx : wp - tx]
+
+    hp, wp = processed.shape[:2]
+
+    # Remove pink watermark if catalog tile source
+    processed = remove_pink_watermark(processed)
+
+    gray = cv2.cvtColor(processed, cv2.COLOR_BGR2GRAY) if processed.ndim == 3 else processed.copy()
+
+    # Bilateral smoothing for noise removal without edge softening
+    if enhance:
+        smooth = cv2.bilateralFilter(gray, d=7, sigmaColor=35, sigmaSpace=35)
+    else:
+        smooth = gray.copy()
+
+    t_otsu, eta = compute_otsu_metrics(smooth)
+    bw_c = max(2, int(wp * 0.03))
+    bh_c = max(2, int(hp * 0.03))
+    b_strip = np.concatenate([
+        smooth[:bh_c, :].ravel(),
+        smooth[-bh_c:, :].ravel(),
+        smooth[:, :bw_c].ravel(),
+        smooth[:, -bw_c:].ravel(),
+    ])
+    perim_bright_ratio = float((b_strip > t_otsu).mean())
+    white_ratio = float((smooth > t_otsu).mean())
+
+    if was_dark_metal:
+        is_dark = True
+    elif mode == "raw_sheet":
+        is_dark = False
+    elif mode in {"backlit", "installed_product"}:
+        is_dark = True
+    elif perim_bright_ratio > 0.60:
+        is_dark = False
+    elif white_ratio < 0.25:
+        is_dark = True
+    else:
+        is_dark = False
+
+    t_final = np.clip(t_otsu + threshold_offset * 1.5, 20, 235)
+    mask = np.zeros((hp, wp), dtype=np.uint8)
+
+    if not is_dark:
+        mask[smooth > t_final] = 255
+        polarity_inverted = False
+    else:
+        mask[smooth <= t_final] = 255
+        polarity_inverted = True
+
+    min_area = max(8, int(gray.size / 30000))
+    mask = remove_specks(mask, min_area=min_area)
+
+    # Perimeter and corners enforcement for user crops and panels with solid metal frames
+    if perim_bright_ratio > 0.80:
+        cw = max(8, int(wp * 0.06))
+        ch = max(8, int(hp * 0.06))
+        mask[:ch, :cw] = 255
+        mask[:ch, -cw:] = 255
+        mask[-ch:, :cw] = 255
+        mask[-ch:, -cw:] = 255
+
+        fw = max(2, int(wp * 0.02))
+        fh = max(2, int(hp * 0.02))
+        mask[:fh, :] = 255
+        mask[-fh:, :] = 255
+        mask[:, :fw] = 255
+        mask[:, -fw:] = 255
+
+    if invert:
+        mask = cv2.bitwise_not(mask)
+        polarity_inverted = not polarity_inverted
+
+    return mask, {"polarity_inverted": polarity_inverted, "is_cad": False}
 
 
 def normalize_dxf_screenshot(
@@ -621,132 +752,16 @@ def convert_customer_crop_to_stencil_mask(
     - Blurry / compressed WhatsApp mobile camera shots (mode="blurry")
     - General auto mode (mode="auto")
     """
-    if crop_bgr is None or crop_bgr.size == 0:
-        return np.zeros((224, 224), dtype=np.uint8)
-
-    processed = crop_bgr.copy()
-    h, w = processed.shape[:2]
-
-    # Step 1: Optional border trim (remove 1-3% framing artifacts like door jamb or curb)
-    if trim_border_pct > 0.0:
-        ty = max(1, int(h * trim_border_pct))
-        tx = max(1, int(w * trim_border_pct))
-        if h > 2 * ty + 10 and w > 2 * tx + 10:
-            processed = processed[ty : h - ty, tx : w - tx]
-            h, w = processed.shape[:2]
-
-    # Step 2: Remove pink watermark if catalog source
-    processed = remove_pink_watermark(processed)
-
-    # Step 3: Bilateral filter to suppress sensor noise & JPEG block artifacts while preserving sharp cut edges
-    filtered = cv2.bilateralFilter(processed, d=5, sigmaColor=35, sigmaSpace=35)
-    gray = cv2.cvtColor(filtered, cv2.COLOR_BGR2GRAY) if filtered.ndim == 3 else filtered.copy()
-
-    # Step 4: Detail enhancement (unsharp mask for blurry/low-contrast photos)
-    if enhance or mode == "blurry":
-        gauss = cv2.GaussianBlur(gray, (0, 0), sigmaX=1.5)
-        sharp_boost = 1.8 if mode == "blurry" else 1.2
-        gray_sharp = cv2.addWeighted(gray, 1.0 + sharp_boost, gauss, -sharp_boost, 0)
-        gray = np.clip(gray_sharp, 0, 255).astype(np.uint8)
-
-    # Step 5: Multi-scale CLAHE to normalize lighting and equalize contrast across gradients
-    # (e.g. bright sky shining through top apertures, dark shadowed ground at bottom)
-    clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
-    gray_eq = clahe.apply(gray)
-    blurred = cv2.GaussianBlur(gray_eq, (3, 3), 0)
-
-    # Step 6: Robust Metal vs Background Polarity Detection
-    # Sample structural perimeter strips (excluding extreme corners to avoid sky bleed):
-    bw_check = max(2, int(w * 0.04))
-    bh_check = max(2, int(h * 0.04))
-    left_strip = gray[bh_check : max(bh_check + 1, h - bh_check), :bw_check]
-    right_strip = gray[bh_check : max(bh_check + 1, h - bh_check), -bw_check:]
-    bot_strip = gray[-bh_check:, bw_check : max(bw_check + 1, w - bw_check)]
-    top_strip = gray[:bh_check, bw_check : max(bw_check + 1, w - bw_check)]
-
-    perimeter_pixels = np.concatenate([
-        left_strip.ravel(),
-        right_strip.ravel(),
-        bot_strip.ravel(),
-        top_strip.ravel(),
-    ])
-    med_perimeter = float(np.median(perimeter_pixels)) if perimeter_pixels.size > 0 else 128.0
-
-    # Interior cutout analysis
-    interior = gray[bh_check * 2 : max(bh_check * 2 + 1, h - bh_check * 2), bw_check * 2 : max(bw_check * 2 + 1, w - bw_check * 2)]
-    p90_interior = float(np.percentile(interior, 90)) if interior.size > 0 else med_perimeter
-    med_interior = float(np.median(interior)) if interior.size > 0 else med_perimeter
-
-    # Backlit silhouette / dark metal detection:
-    # In backlit silhouettes, outdoor daylight shines through the cutouts (p90 is very high)
-    # while the metal frame and body are dark (med_perimeter or med_interior is low).
-    is_dark_metal = (
-        mode in {"backlit", "mixed_lighting"}
-        or (med_perimeter < 95.0 and p90_interior > 140.0)
-        or (med_interior < 65.0 and p90_interior > 130.0)
-        or (p90_interior - med_perimeter > 50.0 and med_perimeter < 120.0)
+    mask, _ = normalize_stencil(
+        bgr=crop_bgr,
+        crop=False,
+        mode=mode,
+        enhance=enhance,
+        threshold_offset=threshold_offset,
+        invert=invert,
+        trim_border_pct=trim_border_pct,
     )
-
-    # Local statistics for local contrast thresholding
-    ksize = max(15, int(min(h, w) * 0.08)) | 1
-    f_gray = gray_eq.astype(np.float32)
-    local_mean = cv2.boxFilter(f_gray, -1, (ksize, ksize))
-    sqr_mean = cv2.boxFilter(f_gray ** 2, -1, (ksize, ksize))
-    local_var = np.maximum(sqr_mean - (local_mean ** 2), 0.0)
-    local_std = np.sqrt(local_var)
-
-    c_shift = 1.0 - (threshold_offset * 0.15)
-    binary = np.full((h, w), 255, dtype=np.uint8)
-
-    if is_dark_metal:
-        # Cutouts are BRIGHTER than metal (daylight/sun shines through apertures).
-        # Solid metal = 255 (White), Cutouts = 0 (Black).
-        # On textured areas (local_std >= 5.0): cutouts are pixels brighter than local mean
-        # On flat solid regions (local_std < 5.0): bright apertures are > 135.0, dark metal is <= 135.0
-        is_cutout = ((local_std >= 5.0) & (f_gray > local_mean + c_shift)) | ((local_std < 5.0) & (f_gray > 135.0))
-        binary[is_cutout] = 0
-    else:
-        # Standard: Metal is BRIGHTER than cutouts (silver metal / dark shadow in cuts).
-        # Solid metal = 255 (White), Cutouts = 0 (Black).
-        is_metal = ((local_std >= 5.0) & (f_gray > local_mean - c_shift)) | ((local_std < 5.0) & (f_gray > 135.0))
-        binary = np.zeros((h, w), dtype=np.uint8)
-        binary[is_metal] = 255
-
-    # Step 7: Morphological clean up
-    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
-    cleaned_mask = cv2.morphologyEx(binary, cv2.MORPH_OPEN, kernel, iterations=1)
-    cleaned_mask = cv2.morphologyEx(cleaned_mask, cv2.MORPH_CLOSE, kernel, iterations=1)
-
-    # Step 8: Hardware and Frame Sanitization
-    # 8a: Enforce structural perimeter frame: all physical metal panels have a solid metal border
-    bw_frame = max(2, int(w * 0.025))
-    bh_frame = max(2, int(h * 0.025))
-    cleaned_mask[:bh_frame, :] = 255
-    cleaned_mask[-bh_frame:, :] = 255
-    cleaned_mask[:, :bw_frame] = 255
-    cleaned_mask[:, -bw_frame:] = 255
-
-    # 8b: Suppress isolated single-rod handles / circular hardware for installed products
-    if mode in {"installed_product", "auto"}:
-        inv_mask = cv2.bitwise_not(cleaned_mask)
-        num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(inv_mask)
-        for i in range(1, num_labels):
-            cw = stats[i, cv2.CC_STAT_WIDTH]
-            ch = stats[i, cv2.CC_STAT_HEIGHT]
-            area = stats[i, cv2.CC_STAT_AREA]
-            # Long vertical door handle rods:
-            if ch > 0.20 * h and ch > 5 * cw and area > 80:
-                cleaned_mask[labels == i] = 255
-
-    # Step 9: Polarity validation across all modes
-    if not detect_stencil_polarity(cleaned_mask):
-        cleaned_mask = cv2.bitwise_not(cleaned_mask)
-
-    # Step 10: Explicit manual inversion override
-    if invert:
-        cleaned_mask = cv2.bitwise_not(cleaned_mask)
-
-    return cleaned_mask
+    return mask
 
 
 def detect_cutout_subpanels(mask: np.ndarray) -> List[Tuple[str, np.ndarray]]:
