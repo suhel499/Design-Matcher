@@ -12,8 +12,11 @@ import sys
 import traceback
 from pathlib import Path
 
-# Add design_matcher to path
-project_dir = Path(__file__).resolve().parent / "design_matcher"
+# Add repo root and design_matcher to sys.path
+repo_root = Path(__file__).resolve().parent
+project_dir = repo_root / "design_matcher"
+if str(repo_root) not in sys.path:
+    sys.path.insert(0, str(repo_root))
 if str(project_dir) not in sys.path:
     sys.path.insert(0, str(project_dir))
 

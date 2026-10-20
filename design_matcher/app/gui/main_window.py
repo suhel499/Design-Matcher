@@ -1074,7 +1074,12 @@ class MainWindow(QMainWindow):
         self.main_stack.addWidget(self.about_page)
 
         # Page 9: Contact Us & Technical Support
-        self.contact_page = ContactPage(db=self.catalog_index.db, parent=self.main_stack)
+        self.contact_page = ContactPage(
+            db=self.catalog_index.db,
+            parent=self.main_stack,
+            server_url=self.license_manager.server_url,
+            license_manager=self.license_manager,
+        )
         self.contact_page.back_requested.connect(lambda: self.open_page(0))
         self.main_stack.addWidget(self.contact_page)
         self.support_page = self.contact_page  # backwards compatibility alias

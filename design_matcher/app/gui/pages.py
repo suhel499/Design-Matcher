@@ -2564,11 +2564,19 @@ class ContactPage(QWidget):
     """
     back_requested = Signal()
 
-    def __init__(self, db: Optional[Any] = None, parent: Optional[QWidget] = None) -> None:
+    def __init__(
+        self,
+        db: Optional[Any] = None,
+        parent: Optional[QWidget] = None,
+        server_url: Optional[str] = None,
+        license_manager: Optional[Any] = None,
+    ) -> None:
         super().__init__(parent)
         self.setObjectName("pageRoot")
         self.is_dark = True
         self.db = db
+        self.server_url = server_url
+        self.license_manager = license_manager
         self._setup_ui()
         self.apply_theme(True)
 
@@ -2750,9 +2758,10 @@ class ContactPage(QWidget):
         row_send = QHBoxLayout()
         row_send.setSpacing(10)
 
-        btn_submit = QPushButton("✉️ Submit Inquiry to Database")
+        btn_submit = QPushButton("Submit")
         btn_submit.setProperty("class", "primaryBtn")
         btn_submit.clicked.connect(self._submit_inquiry)
+        self.btn_submit = btn_submit
         row_send.addWidget(btn_submit)
 
         btn_send_both = QPushButton("📧 Open in Email Client")
@@ -2812,32 +2821,92 @@ class ContactPage(QWidget):
             QMessageBox.warning(self, "Invalid Content", "Executable scripts or embedded HTML tags are strictly prohibited.")
             return
 
-        # 3. Save to database using parameterized query
-        try:
-            if getattr(self, "db", None):
-                db = self.db
-            else:
-                try:
-                    from app.core.db import CatalogDatabase
-                except ImportError:
-                    from design_matcher.app.core.db import CatalogDatabase
-                db = CatalogDatabase()
-            sub_id = db.save_contact_submission(name=name, email=email, subject=subject, message=message)
+        # 3. Save to database using server API authority and parameterized query fallback
+        sub_id = None
+        saved_on_server = False
+
+        # Attempt A: Submit directly to central Server Authority REST API (saves directly to server MySQL DB)
+        candidate_urls = []
+        if os.environ.get("DESIGN_MATCHER_SERVER_URL"):
+            candidate_urls.append(os.environ["DESIGN_MATCHER_SERVER_URL"].rstrip("/"))
+        if getattr(self, "server_url", None):
+            candidate_urls.append(str(self.server_url).rstrip("/"))
+        if getattr(getattr(self, "license_manager", None), "server_url", None):
+            candidate_urls.append(str(self.license_manager.server_url).rstrip("/"))
+        candidate_urls.extend(["http://127.0.0.1:8000", "http://localhost:8000", "http://dm.suiteutil.com"])
+
+        seen_urls = set()
+        unique_urls = []
+        for u in candidate_urls:
+            clean_u = u.strip().rstrip("/")
+            if clean_u and clean_u not in seen_urls:
+                seen_urls.add(clean_u)
+                unique_urls.append(clean_u)
+
+        import json
+        import urllib.request
+        import urllib.error
+
+        req_data = json.dumps({
+            "name": name,
+            "email": email,
+            "subject": subject,
+            "message": message,
+        }).encode("utf-8")
+
+        for s_url in unique_urls:
+            endpoint = f"{s_url}/api/v1/contact"
+            try:
+                req = urllib.request.Request(
+                    endpoint,
+                    data=req_data,
+                    headers={
+                        "Content-Type": "application/json",
+                        "User-Agent": "DesignMatcher-Desktop/1.0",
+                    },
+                )
+                with urllib.request.urlopen(req, timeout=3.5) as response:
+                    if response.status in (200, 201):
+                        resp_json = json.loads(response.read().decode("utf-8"))
+                        sub_id = resp_json.get("id") or resp_json.get("ticketId") or resp_json.get("submissionId")
+                        saved_on_server = True
+                        logger.info("Saved contact inquiry via server endpoint %s with ID %s", endpoint, sub_id)
+                        break
+            except Exception as net_exc:
+                logger.debug("Server contact endpoint %s unavailable: %s", endpoint, net_exc)
+
+        # Attempt B: Fallback to direct database layer (which also mirrors to design_matcher_licensing in MySQL)
+        if not sub_id:
+            try:
+                if getattr(self, "db", None):
+                    db = self.db
+                else:
+                    try:
+                        from app.core.db import CatalogDatabase
+                    except ImportError:
+                        from design_matcher.app.core.db import CatalogDatabase
+                    db = CatalogDatabase()
+                sub_id = db.save_contact_submission(name=name, email=email, subject=subject, message=message)
+                saved_on_server = getattr(db, "is_mysql", False)
+                logger.info("Saved contact inquiry via database layer with ID %s (saved_on_server=%s)", sub_id, saved_on_server)
+            except Exception as exc:
+                logger.error("Failed to save contact submission to database: %s", exc)
+
+        if sub_id:
             QMessageBox.information(
                 self,
-                "Inquiry Submitted Successfully",
+                "Inquiry Submitted",
                 f"Thank you, {name}!\n\n"
-                f"Your inquiry has been securely saved to the database.\n"
+                f"Your inquiry has been securely Submited\n"
                 f"Reference Ticket ID: {sub_id}\n\n"
-                f"Our engineering team will review it and reply within 2 to 4 hours."
+                f"Our engineering team will review it and reply earlyer"
             )
             # Clear form
             self.txt_name.clear()
             self.txt_email.clear()
             self.txt_summary.clear()
             self.txt_desc.clear()
-        except Exception as exc:
-            logger.error("Failed to save contact submission: %s", exc)
+        else:
             QMessageBox.critical(
                 self,
                 "Submission Error",

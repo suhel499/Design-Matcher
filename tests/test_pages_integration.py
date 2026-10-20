@@ -238,6 +238,71 @@ def test_contact_page_founder_details(qtbot):
     assert "Nihal Mulani" in all_text
 
 
+def test_contact_page_form_submission_success(qtbot, monkeypatch):
+    from unittest.mock import MagicMock
+    from PySide6.QtWidgets import QMessageBox
+
+    # Mock QMessageBox.information to prevent blocking modal
+    info_mock = MagicMock()
+    monkeypatch.setattr(QMessageBox, "information", info_mock)
+
+    from app.core.db import CatalogDatabase
+    mock_db = MagicMock(spec=CatalogDatabase)
+    mock_db.save_contact_submission.return_value = "ticket-uuid-12345"
+    mock_db.is_mysql = True
+
+    page = ContactPage(db=mock_db)
+    qtbot.addWidget(page)
+
+    assert page.btn_submit.text() == "Submit"
+
+    page.txt_name.setText("Rajesh Kumar")
+    page.txt_email.setText("rajesh@steelworks.com")
+    page.txt_summary.setText("Feature Request for CAD Linework")
+    page.txt_desc.setText("Can you add automated DXF scaling options for 200 DPI drawings?")
+
+    page._submit_inquiry()
+
+    # Verify popup shown and form cleared
+    assert info_mock.called
+    call_msg = info_mock.call_args[0][2]
+    assert "Thank you, Rajesh Kumar!" in call_msg
+    assert "Your inquiry has been securely Submited" in call_msg
+    assert "Reference Ticket ID:" in call_msg
+    assert "Our engineering team will review it and reply earlyer" in call_msg
+
+    assert page.txt_name.text() == ""
+    assert page.txt_email.text() == ""
+    assert page.txt_summary.text() == ""
+    assert page.txt_desc.toPlainText() == ""
+
+
+def test_contact_page_validation(qtbot, monkeypatch):
+    from unittest.mock import MagicMock
+    from PySide6.QtWidgets import QMessageBox
+
+    warn_mock = MagicMock()
+    monkeypatch.setattr("app.gui.pages.QMessageBox.warning", warn_mock)
+    monkeypatch.setattr(QMessageBox, "warning", warn_mock)
+
+    page = ContactPage()
+    qtbot.addWidget(page)
+
+    # Missing fields
+    page.txt_name.setText("")
+    page._submit_inquiry()
+    assert warn_mock.called
+
+    # Malicious script tag
+    warn_mock.reset_mock()
+    page.txt_name.setText("Valid Name")
+    page.txt_email.setText("user@domain.com")
+    page.txt_summary.setText("Valid Subject")
+    page.txt_desc.setPlainText("<script>alert('xss')</script> test message here")
+    page._submit_inquiry()
+    assert warn_mock.called
+
+
 def test_privacy_and_terms_pages(qtbot):
     privacy_page = PrivacyPolicyPage()
     qtbot.addWidget(privacy_page)

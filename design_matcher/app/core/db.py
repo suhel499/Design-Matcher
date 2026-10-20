@@ -798,16 +798,42 @@ class CatalogDatabase:
         """
         import uuid
         submission_id = str(uuid.uuid4())
+        clean_name = name.strip()
+        clean_email = email.strip().lower()
+        clean_subject = subject.strip()
+        clean_msg = message.strip()
+
         with self._get_connection() as conn:
             conn.execute(
                 """
                 INSERT INTO contact_submissions (id, name, email, subject, message, status)
                 VALUES (?, ?, ?, ?, ?, 'NEW')
                 """,
-                (submission_id, name.strip(), email.strip().lower(), subject.strip(), message.strip()),
+                (submission_id, clean_name, clean_email, clean_subject, clean_msg),
             )
             conn.commit()
-            return submission_id
+
+        # If connected to MySQL, also guarantee persistence in the central server authority database
+        if getattr(self, "is_mysql", False):
+            try:
+                raw_conn = self._create_raw_mysql_connection()
+                with raw_conn.cursor() as cur:
+                    cur.execute(
+                        """
+                        INSERT INTO design_matcher_licensing.contact_submissions
+                            (id, name, email, subject, message, status, created_at, updated_at)
+                        VALUES (%s, %s, %s, %s, %s, 'NEW', NOW(), NOW())
+                        ON DUPLICATE KEY UPDATE status = 'NEW', updated_at = NOW()
+                        """,
+                        (submission_id, clean_name, clean_email, clean_subject, clean_msg),
+                    )
+                raw_conn.commit()
+                raw_conn.close()
+                logger.info("Successfully persisted contact submission %s into server DB (design_matcher_licensing)", submission_id)
+            except Exception as exc:
+                logger.warning("Could not mirror contact submission to server DB: %s", exc)
+
+        return submission_id
 
     def get_contact_submissions(self, status: Optional[str] = None, limit: int = 50) -> list[dict[str, Any]]:
         """Retrieves saved contact queries, optionally filtered by status ('NEW', 'IN_PROGRESS', 'RESOLVED')."""
