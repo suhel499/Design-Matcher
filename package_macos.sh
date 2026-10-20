@@ -94,12 +94,13 @@ cp -R "$APP_PATH" "$DMG_STAGING/"
 # Add symbolic link to /Applications for standard drag-to-install UX
 ln -s /Applications "$DMG_STAGING/Applications"
 
-# Create compressed read-only DMG using native hdiutil
+# Create compressed read-only DMG using native hdiutil (fast compression)
 hdiutil create \
     -volname "${APP_TITLE}" \
     -srcfolder "$DMG_STAGING" \
     -ov \
     -format UDZO \
+    -imagekey zlib-level=1 \
     "$DMG_OUTPUT"
 
 # Optional: Sign DMG if identity provided

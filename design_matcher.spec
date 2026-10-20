@@ -66,7 +66,7 @@ datas = []
 if (project_root / "assets").exists():
     datas.append((str(project_root / "assets"), "assets"))
 
-# Package metadata required at runtime (HuggingFace transformers, tokenizers, PyTorch)
+# Package metadata required at runtime (HuggingFace transformers, tokenizers, PyTorch, Pydantic)
 for pkg in [
     "transformers",
     "huggingface_hub",
@@ -80,6 +80,8 @@ for pkg in [
     "packaging",
     "filelock",
     "numpy",
+    "pydantic",
+    "pydantic_core",
 ]:
     datas += safe_copy_metadata(pkg)
 
@@ -92,6 +94,7 @@ for pkg in [
     "torch",
     "ezdxf",
     "shapely",
+    "pydantic",
 ]:
     datas += safe_collect_data(pkg)
 
@@ -155,19 +158,21 @@ hiddenimports = [
     "safetensors",
     "safetensors.torch",
     "tokenizers",
-    # Licensing & Cryptography
+    # Licensing & Cryptography & Validation
     "cryptography",
     "cryptography.hazmat.primitives.asymmetric.ed25519",
     "httpx",
     "httpcore",
     "h11",
+    "pydantic",
+    "pydantic_core",
+    "pydantic_core._pydantic_core",
 ]
 
 # Collect submodules
 for pkg in [
     "app",
     "engine",
-    "transformers",
     "huggingface_hub",
     "safetensors",
     "pypdfium2",
@@ -175,6 +180,8 @@ for pkg in [
     "ezdxf",
     "shapely",
     "pymysql",
+    "pydantic",
+    "pydantic_core",
 ]:
     hiddenimports += safe_collect_submodules(pkg)
 
@@ -244,7 +251,7 @@ exe = EXE(
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=is_windows,  # UPX enabled only on Windows; disabled on macOS to avoid code signing corruption
+    upx=False,  # UPX disabled to ensure binary stability and faster packaging
     console=False,   # Windowed GUI application (no terminal popup)
     disable_windowed_traceback=False,
     argv_emulation=False,
@@ -261,7 +268,7 @@ coll = COLLECT(
     a.zipfiles,
     a.datas,
     strip=False,
-    upx=is_windows,
+    upx=False,
     upx_exclude=[],
     name="DesignMatcher",
 )

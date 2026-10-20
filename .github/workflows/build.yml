@@ -60,11 +60,11 @@ jobs:
           cache: "pip"
 
       - name: Install Inno Setup
-        run: choco install innosetup -y
+        run: choco install innosetup -y --no-progress
 
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip setuptools wheel pyinstaller pillow
+          python -m pip install --upgrade pip setuptools wheel pyinstaller pillow pydantic pydantic-core
           pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
           pip install -r requirements.txt
 
@@ -132,7 +132,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip setuptools wheel pyinstaller pillow
+          python -m pip install --upgrade pip setuptools wheel pyinstaller pillow pydantic pydantic-core
           pip install -r requirements.txt
 
       - name: Package macOS App & DMG
