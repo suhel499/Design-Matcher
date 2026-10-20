@@ -355,19 +355,21 @@ class LicenseManager:
             return False, verdict.message
 
         if self._cached_payload and self._cached_payload.features:
-            # If specific features are listed, verify operation
+            # Map operations to acceptable feature sets (supporting portal & client aliases)
             op_feature_map = {
-                "search_dxf": "dxf_matching",
-                "search_pdf": "pdf_catalog",
-                "index_dxf": "dxf_matching",
-                "index_pdf": "pdf_catalog",
-                "code_search": "code_search",
-                "export": "dxf_export",
-                "dxf_preview": "dxf_matching",
+                "search_dxf": {"dxf_matching", "vector_search", "search_dxf"},
+                "search_pdf": {"pdf_catalog", "pdf_indexing", "vector_search", "dxf_matching"},
+                "index_dxf": {"dxf_matching", "pdf_indexing", "index_dxf"},
+                "index_pdf": {"pdf_catalog", "pdf_indexing", "index_pdf"},
+                "code_search": {"code_search", "vector_search", "dxf_matching"},
+                "export": {"dxf_export", "export_cad", "export"},
+                "dxf_preview": {"dxf_matching", "pdf_indexing", "dxf_preview"},
             }
-            required_feat = op_feature_map.get(operation)
-            if required_feat and required_feat not in self._cached_payload.features:
-                return False, f"Feature '{required_feat}' is not enabled in your current plan."
+            allowed_feature_set = op_feature_map.get(operation)
+            if allowed_feature_set:
+                payload_features = set(self._cached_payload.features)
+                if not (payload_features & allowed_feature_set):
+                    return False, f"Feature '{operation}' is not enabled in your current plan."
 
         return True, ""
 
