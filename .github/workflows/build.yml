@@ -6,9 +6,47 @@ on:
     tags: [ "v*" ]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
+  init-release:
+    name: Prepare GitHub Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Ensure GitHub Release Exists
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            TAG_NAME="${{ github.ref_name }}"
+            PRERELEASE_FLAG=""
+            TITLE="Release $TAG_NAME"
+          else
+            TAG_NAME="latest-build"
+            PRERELEASE_FLAG="--prerelease"
+            TITLE="Design Matcher (Latest Build - ${{ github.ref_name }})"
+          fi
+
+          echo "Target tag: $TAG_NAME"
+
+          if gh release view "$TAG_NAME" >/dev/null 2>&1; then
+            echo "Release $TAG_NAME already exists. Updating details..."
+            gh release edit "$TAG_NAME" --title "$TITLE" --notes "Automated CI build from branch \`${{ github.ref_name }}\` (commit \`${{ github.sha }}\`)." || true
+          else
+            echo "Creating release $TAG_NAME..."
+            gh release create "$TAG_NAME" \
+              --title "$TITLE" \
+              --notes "Automated CI build from branch \`${{ github.ref_name }}\` (commit \`${{ github.sha }}\`)." \
+              $PRERELEASE_FLAG
+          fi
+
   build-windows:
     name: Build Windows Installer (.exe)
+    needs: [init-release]
     runs-on: windows-latest
 
     steps:
@@ -49,16 +87,37 @@ jobs:
             exit $LASTEXITCODE
           }
 
-      - name: Upload Windows Setup Artifact
+      # Publish directly to GitHub Release (bypasses Actions artifact 500MB storage quota)
+      - name: Upload Installer to GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: pwsh
+        run: |
+          $tagName = if ("${{ github.ref }}".StartsWith("refs/tags/v")) { "${{ github.ref_name }}" } else { "latest-build" }
+          $files = Get-ChildItem Output/DesignMatcher_Setup_*.exe
+          if ($files) {
+            foreach ($f in $files) {
+              Write-Host "Uploading $($f.FullName) to GitHub Release $tagName..."
+              gh release upload $tagName $f.FullName --clobber
+            }
+          } else {
+            Write-Error "No setup executable found in Output/"
+            exit 1
+          }
+
+      # Optional CI Artifact backup (continue-on-error prevents failures if quota is full)
+      - name: Upload Windows Setup Artifact (Backup)
         uses: actions/upload-artifact@v4
+        continue-on-error: true
         with:
           name: DesignMatcher_Windows_Setup
           path: Output/DesignMatcher_Setup_*.exe
-          if-no-files-found: error
-          retention-days: 30
+          if-no-files-found: ignore
+          retention-days: 1
 
   build-macos:
     name: Build macOS DMG (.dmg)
+    needs: [init-release]
     runs-on: macos-latest
 
     steps:
@@ -81,39 +140,33 @@ jobs:
           chmod +x package_macos.sh
           ./package_macos.sh
 
-      - name: Upload macOS DMG Artifact
+      # Publish directly to GitHub Release (bypasses Actions artifact 500MB storage quota)
+      - name: Upload DMG to GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            TAG_NAME="${{ github.ref_name }}"
+          else
+            TAG_NAME="latest-build"
+          fi
+          DMG_FILES=(dist/DesignMatcher_*.dmg)
+          if [ -f "${DMG_FILES[0]}" ]; then
+            for f in "${DMG_FILES[@]}"; do
+              echo "Uploading $f to GitHub Release $TAG_NAME..."
+              gh release upload "$TAG_NAME" "$f" --clobber
+            done
+          else
+            echo "Error: No DMG file found in dist/"
+            exit 1
+          fi
+
+      # Optional CI Artifact backup (continue-on-error prevents failures if quota is full)
+      - name: Upload macOS DMG Artifact (Backup)
         uses: actions/upload-artifact@v4
+        continue-on-error: true
         with:
           name: DesignMatcher_macOS_DMG
           path: dist/DesignMatcher_*.dmg
-          if-no-files-found: error
-          retention-days: 30
-
-  publish-release:
-    name: Publish Release to GitHub
-    needs: [build-windows, build-macos]
-    if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-
-    steps:
-      - name: Download Windows Setup Artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: DesignMatcher_Windows_Setup
-          path: release_assets
-
-      - name: Download macOS DMG Artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: DesignMatcher_macOS_DMG
-          path: release_assets
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: release_assets/*
-          draft: false
-          prerelease: false
-          generate_release_notes: true
+          if-no-files-found: ignore
+          retention-days: 1
