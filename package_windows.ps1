@@ -13,12 +13,12 @@ Write-Host " Design Matcher - Windows Packaging Workflow" -ForegroundColor Cyan
 Write-Host "==========================================================" -ForegroundColor Cyan
 
 # 1. Environment Activation
-if (Test-Path ".venv\Scripts\Activate.ps1") {
-    Write-Host "[1/5] Activating virtual environment..." -ForegroundColor Green
-    . .venv\Scripts\Activate.ps1
-} else {
-    Write-Error "Virtual environment '.venv' not found! Create one with: python -m venv .venv"
+if (-not (Test-Path ".venv\Scripts\Activate.ps1")) {
+    Write-Host "[SETUP] Creating virtual environment '.venv'..." -ForegroundColor Yellow
+    python -m venv .venv
 }
+Write-Host "[1/5] Activating virtual environment..." -ForegroundColor Green
+. .venv\Scripts\Activate.ps1
 
 # 2. Dependency Check & Installation
 Write-Host "[2/5] Checking and installing dependencies from requirements.txt..." -ForegroundColor Green

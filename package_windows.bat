@@ -7,13 +7,15 @@ REM ============================================================================
 setlocal enabledelayedexpansion
 
 echo [1/4] Activating Virtual Environment...
-if exist ".venv\Scripts\activate.bat" (
-    call .venv\Scripts\activate.bat
-) else (
-    echo [ERROR] Virtual environment not found in .venv!
-    echo Please create it first: python -m venv .venv
-    exit /b 1
+if not exist ".venv\Scripts\activate.bat" (
+    echo [SETUP] Creating isolated virtual environment in .venv...
+    python -m venv .venv
+    if errorlevel 1 (
+        echo [ERROR] Failed to create virtual environment! Please ensure Python 3.11 is installed.
+        exit /b 1
+    )
 )
+call .venv\Scripts\activate.bat
 
 echo [2/4] Verifying and Installing Dependencies from requirements.txt...
 python -m pip install --upgrade pip

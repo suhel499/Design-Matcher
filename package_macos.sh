@@ -18,13 +18,14 @@ echo "=========================================================="
 echo " Design Matcher - macOS Packaging Workflow (v${VERSION})"
 echo "=========================================================="
 
-# 1. Activate Virtual Environment
+# 1. Activate Virtual Environment (supports local .venv and CI environments)
 if [ -d ".venv" ]; then
-    echo "[1/5] Activating virtual environment..."
+    echo "[1/5] Activating virtual environment (.venv)..."
     source .venv/bin/activate
+elif [ -n "${VIRTUAL_ENV:-}" ]; then
+    echo "[1/5] Using active virtual environment: $VIRTUAL_ENV"
 else
-    echo "[ERROR] .venv not found. Please create it first: python3 -m venv .venv"
-    exit 1
+    echo "[1/5] Using system/environment Python: $(which python3)"
 fi
 
 # 2. Verify / Install PyInstaller
