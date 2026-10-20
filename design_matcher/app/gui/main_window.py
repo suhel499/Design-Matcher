@@ -813,8 +813,9 @@ class MainWindow(QMainWindow):
         left_layout.addWidget(self.mask_frame)
 
         # Primary Search Button
-        self.search_btn = QPushButton("SEARCH DXF LIBRARY (FROM STENCIL)", left_widget)
+        self.search_btn = QPushButton("SEARCH DXF & PDF LIBRARIES (FROM STENCIL)", left_widget)
         self.search_btn.setObjectName("searchBtn")
+        self.search_btn.setToolTip("Search both DXF CAD files and PDF catalogs for matching stencil pattern")
         self.search_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.search_btn.setEnabled(False)
         self.search_btn.clicked.connect(self._start_search)
@@ -984,6 +985,8 @@ class MainWindow(QMainWindow):
         self.settings_page = SettingsPage(db=self.catalog_index.db, catalog_index=self.catalog_index, parent=self.main_stack)
         self.settings_page.back_requested.connect(lambda: self.open_page(0))
         self.settings_page.settings_saved.connect(self.update_catalog_stats)
+        self.settings_page.index_pdf_requested.connect(self._start_indexing_flow)
+        self.settings_page.index_dxf_requested.connect(self._start_dxf_indexing_flow)
         self.main_stack.addWidget(self.settings_page)
 
         # Page 5: Help, Quick Start Guide & Diagnostics
@@ -1055,9 +1058,9 @@ class MainWindow(QMainWindow):
             self.left_panel_title.setText("CUSTOMER PHOTO / STENCIL")
             self.photo_tools_container.setVisible(True)
             self.ref_comp_container.setVisible(False)
-            self.search_btn.setText("SEARCH DXF LIBRARY (FROM STENCIL)")
+            self.search_btn.setText("SEARCH DXF & PDF LIBRARIES (FROM STENCIL)")
             self.search_btn.setEnabled(self.current_mask is not None)
-            self.status_bar.showMessage("Switched to Mode A: Photo / PNG Stencil -> DXF Search.")
+            self.status_bar.showMessage("Switched to Mode A: Photo / PNG Stencil -> DXF & PDF Search.")
         else:
             self.left_panel_title.setText("REFERENCE DXF DESIGN")
             self.photo_tools_container.setVisible(False)
@@ -1469,19 +1472,32 @@ class MainWindow(QMainWindow):
             pdf_vecs = self.catalog_index.total_vectors
 
             if dxf_stats.get("total_components", 0) == 0 and pdf_vecs == 0:
-                QMessageBox.warning(
+                reply = QMessageBox.question(
                     self,
                     "Empty Index",
-                    "Neither the DXF library nor the PDF catalog is indexed.\nPlease click 'Index DXF Library' or 'Index Catalogs' at the top first.",
+                    "Neither the DXF library nor the PDF catalog is indexed yet.\n\n"
+                    "Would you like to open Settings now to configure and index your PDF and DXF folders?",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                    QMessageBox.StandardButton.Yes,
                 )
+                if reply == QMessageBox.StandardButton.Yes:
+                    self.open_page(4)
                 return
 
             self.search_btn.setEnabled(False)
-            self.search_btn.setText("SEARCHING CATALOG...")
+            self.search_btn.setText("SEARCHING DXF & PDF LIBRARIES...")
             self.status_bar.showMessage("Searching DXF library and PDF catalogs for matching stencil...")
+
+            # Reset previous results for clean new search
+            self.last_dxf_results = []
+            self.last_pdf_results = []
+            self._render_results()
+
+            self._active_search_workers = 0
 
             # Dispatch DXF match worker if DXF library indexed
             if dxf_stats.get("total_components", 0) > 0:
+                self._active_search_workers += 1
                 self.dxf_match_worker = DxfMatchWorker(
                     db=self.dxf_db,
                     mode="stencil",
@@ -1497,10 +1513,15 @@ class MainWindow(QMainWindow):
 
             # Dispatch PDF vector searcher if PDF catalog indexed
             if pdf_vecs > 0:
+                self._active_search_workers += 1
                 self.search_worker = SearchWorker(self.searcher, self.current_mask, top_k=top_k)
                 self.search_worker.results_signal.connect(self._on_pdf_search_completed)
                 self.search_worker.error_signal.connect(self._on_search_error)
                 self.search_worker.start()
+
+            if self._active_search_workers == 0:
+                self.search_btn.setEnabled(True)
+                self._reset_search_btn_text()
 
     def _set_results_filter(self, mode: str) -> None:
         self.current_filter_mode = mode
@@ -1829,13 +1850,19 @@ class MainWindow(QMainWindow):
             self.status_bar.showMessage(f"No designs found matching code '{query}'.")
         self._record_search_to_history("code", query, results)
 
+    def _reset_search_btn_text(self) -> None:
+        """Restores the search button label based on the active mode."""
+        if getattr(self, "search_mode", "mode_a") == "mode_b":
+            self.search_btn.setText("SEARCH DXF LIBRARY (FROM REFERENCE DXF)")
+        else:
+            self.search_btn.setText("SEARCH DXF & PDF LIBRARIES (FROM STENCIL)")
+
     def _on_dxf_search_completed(self, results: List[SearchResult]) -> None:
-        self.search_btn.setEnabled(True)
-        self.search_btn.setText(
-            "SEARCH DXF LIBRARY (FROM REFERENCE DXF)"
-            if self.search_mode == "mode_b"
-            else "SEARCH DXF LIBRARY (FROM STENCIL)"
-        )
+        self._active_search_workers = max(0, getattr(self, "_active_search_workers", 1) - 1)
+        if self._active_search_workers == 0:
+            self.search_btn.setEnabled(True)
+            self._reset_search_btn_text()
+
         self.last_dxf_results = results
         dxf_count = len(self.last_dxf_results)
         pdf_count = len(self.last_pdf_results)
@@ -1845,8 +1872,8 @@ class MainWindow(QMainWindow):
         self.tab_pdf_btn.setText(f"📄 Top PDF Catalogs [{pdf_count}]")
 
         self._render_results()
-        query_desc = Path(self.reference_dxf_path).name if self.reference_dxf_path else "DXF Drawing"
-        self._record_search_to_history("mode_b", query_desc, results)
+        query_desc = Path(self.reference_dxf_path).name if (self.search_mode == "mode_b" and self.reference_dxf_path) else "Stencil DXF Search"
+        self._record_search_to_history(self.search_mode, query_desc, results)
 
         if results:
             top_res = results[0]
@@ -1858,7 +1885,11 @@ class MainWindow(QMainWindow):
             self.status_bar.showMessage("DXF search finished. No reliable geometric matches found.")
 
     def _on_pdf_search_completed(self, results: List[SearchResult]) -> None:
-        self.search_btn.setEnabled(True)
+        self._active_search_workers = max(0, getattr(self, "_active_search_workers", 1) - 1)
+        if self._active_search_workers == 0:
+            self.search_btn.setEnabled(True)
+            self._reset_search_btn_text()
+
         self.last_pdf_results = [r for r in results if not r.pdf_path.lower().endswith(".dxf")]
         dxf_count = len(self.last_dxf_results)
         pdf_count = len(self.last_pdf_results)
@@ -1868,14 +1899,18 @@ class MainWindow(QMainWindow):
         self.tab_pdf_btn.setText(f"📄 Top PDF Catalogs [{pdf_count}]")
 
         self._render_results()
+        self._record_search_to_history("stencil_pdf", "Stencil PDF Search", results)
+
+        if self.last_pdf_results:
+            self.status_bar.showMessage(
+                f"PDF search complete! Top match: {self.last_pdf_results[0].pdf_name} with {self.last_pdf_results[0].confidence_pct:.1f}% confidence."
+            )
+        else:
+            self.status_bar.showMessage("PDF search finished. No matching catalog designs found.")
 
     def _on_search_completed(self, results: List[SearchResult]) -> None:
         self.search_btn.setEnabled(True)
-        self.search_btn.setText(
-            "SEARCH DXF LIBRARY (FROM REFERENCE DXF)"
-            if self.search_mode == "mode_b"
-            else "SEARCH DXF LIBRARY (FROM STENCIL)"
-        )
+        self._reset_search_btn_text()
 
         # Separate into DXF CAD and PDF Catalog results
         self.last_dxf_results = [
@@ -1908,12 +1943,10 @@ class MainWindow(QMainWindow):
             self.status_bar.showMessage("Search finished. No matches found.")
 
     def _on_search_error(self, err_msg: str) -> None:
-        self.search_btn.setEnabled(True)
-        self.search_btn.setText(
-            "SEARCH DXF LIBRARY (FROM REFERENCE DXF)"
-            if self.search_mode == "mode_b"
-            else "SEARCH DXF LIBRARY (FROM STENCIL)"
-        )
+        self._active_search_workers = max(0, getattr(self, "_active_search_workers", 1) - 1)
+        if self._active_search_workers == 0:
+            self.search_btn.setEnabled(True)
+            self._reset_search_btn_text()
         QMessageBox.critical(self, "Search Error", f"An error occurred during search:\n{err_msg}")
         self.status_bar.showMessage("Search failed.")
 
@@ -1994,10 +2027,13 @@ class MainWindow(QMainWindow):
         root_dir = self.catalog_index.db.get_setting("catalog_root", "")
         if not root_dir or not Path(root_dir).is_dir():
             # Prompt user to select directory
-            self._open_settings()
-            root_dir = self.catalog_index.db.get_setting("catalog_root", "")
-            if not root_dir or not Path(root_dir).is_dir():
+            folder = QFileDialog.getExistingDirectory(self, "Select PDF Catalog Directory")
+            if not folder:
                 return
+            root_dir = folder
+            self.catalog_index.db.set_setting("catalog_root", root_dir)
+            if hasattr(self, "settings_page"):
+                self.settings_page.input_pdf_folder.setText(root_dir)
 
         dpi_str = self.catalog_index.db.get_setting("dpi", "200")
         dpi = int(dpi_str) if dpi_str else 200

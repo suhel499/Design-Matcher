@@ -175,7 +175,7 @@ class CatalogIndex:
 
         with self.db._get_connection() as conn:
             cur = conn.cursor()
-            cur.execute("SELECT id FROM tiles WHERE pdf_path LIKE '%.dxf';")
+            cur.execute("SELECT id FROM tiles WHERE pdf_path LIKE %s;", ("%.dxf",))
             dxf_ids = [r[0] for r in cur.fetchall()]
 
         if not dxf_ids:

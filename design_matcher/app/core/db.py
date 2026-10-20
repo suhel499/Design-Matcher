@@ -242,8 +242,72 @@ class CatalogDatabase:
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
                 """
             )
+            # Auto-sync from SQLite if MySQL tables are empty and SQLite database has indexed data
+            if self.db_path.exists():
+                try:
+                    cursor.execute("SELECT COUNT(*) FROM tiles;")
+                    res = cursor.fetchone()
+                    m_count = list(res.values())[0] if isinstance(res, dict) else res[0]
+                    if m_count == 0:
+                        self._sync_from_sqlite_to_mysql(cursor)
+                except Exception as sync_err:
+                    logger.warning("Could not auto-sync SQLite data to MySQL: %s", sync_err)
+
             conn.commit()
             logger.debug("MySQL Catalog database initialized.")
+
+    def _sync_from_sqlite_to_mysql(self, mcur: Any) -> None:
+        """Copies existing SQLite metadata into MySQL on first boot."""
+        try:
+            sconn = sqlite3.connect(str(self.db_path))
+            sconn.row_factory = sqlite3.Row
+            scur = sconn.cursor()
+
+            # Copy settings
+            scur.execute("SELECT key, value FROM settings;")
+            for r in scur.fetchall():
+                mcur.execute(
+                    "INSERT INTO settings (`key`, `value`) VALUES (%s, %s) ON DUPLICATE KEY UPDATE `value`=VALUES(`value`);",
+                    (r["key"], r["value"]),
+                )
+
+            # Copy indexed_files
+            scur.execute("SELECT pdf_path, folder, file_hash, file_size, last_modified, page_count, tile_count, indexed_at FROM indexed_files;")
+            for r in scur.fetchall():
+                mcur.execute(
+                    """
+                    INSERT INTO indexed_files (pdf_path, folder, file_hash, file_size, last_modified, page_count, tile_count, indexed_at)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    ON DUPLICATE KEY UPDATE folder=VALUES(folder), file_hash=VALUES(file_hash);
+                    """,
+                    (r["pdf_path"], r["folder"], r["file_hash"], r["file_size"], r["last_modified"], r["page_count"], r["tile_count"], r["indexed_at"]),
+                )
+
+            # Copy tiles
+            scur.execute("SELECT id, pdf_path, folder, page_number, tile_index, bbox, crop_type, design_number, thumbnail_path, file_hash, source_type, design_code, dxf_bbox, polarity_variant, entity_count, design_index_info FROM tiles;")
+            tiles = scur.fetchall()
+            if tiles:
+                batch = []
+                for r in tiles:
+                    batch.append((
+                        r["id"], r["pdf_path"], r["folder"], r["page_number"], r["tile_index"],
+                        r["bbox"], r["crop_type"], r["design_number"], r["thumbnail_path"],
+                        r["file_hash"], r["source_type"] or "pdf", r["design_code"],
+                        r["dxf_bbox"], r["polarity_variant"] or 0, r["entity_count"] or 0,
+                        r["design_index_info"]
+                    ))
+                mcur.executemany(
+                    """
+                    INSERT INTO tiles (id, pdf_path, folder, page_number, tile_index, bbox, crop_type, design_number, thumbnail_path, file_hash, source_type, design_code, dxf_bbox, polarity_variant, entity_count, design_index_info)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON DUPLICATE KEY UPDATE pdf_path=VALUES(pdf_path);
+                    """,
+                    batch,
+                )
+            sconn.close()
+            logger.info("Auto-synced %d tiles and metadata from SQLite to MySQL.", len(tiles) if tiles else 0)
+        except Exception as exc:
+            logger.warning("Error during SQLite to MySQL sync: %s", exc)
 
     def _init_sqlite_db(self) -> None:
         """Initializes SQLite fallback tables and indices."""

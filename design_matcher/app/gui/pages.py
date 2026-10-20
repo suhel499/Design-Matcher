@@ -1043,11 +1043,42 @@ class LicensePage(QWidget):
 # 3. SettingsPage (Settings)
 # ==============================================================================
 
+class _FoldersTextCompat:
+    """Compatibility adapter for legacy code and tests accessing txt_folders."""
+    def __init__(self, page: "SettingsPage"):
+        self._page = page
+
+    def setPlainText(self, text: str) -> None:
+        lines = [l.strip() for l in text.splitlines() if l.strip()]
+        if lines:
+            self._page.input_pdf_folder.setText(lines[0])
+            if len(lines) > 1:
+                self._page.chk_same_folder.setChecked(False)
+                self._page.input_dxf_folder.setText(lines[1])
+            else:
+                self._page.input_dxf_folder.setText(lines[0])
+        else:
+            self._page.input_pdf_folder.clear()
+            self._page.input_dxf_folder.clear()
+
+    def toPlainText(self) -> str:
+        pdf = self._page.input_pdf_folder.text().strip()
+        dxf = self._page.input_dxf_folder.text().strip()
+        lines = []
+        if pdf:
+            lines.append(pdf)
+        if dxf and dxf != pdf:
+            lines.append(dxf)
+        return "\n".join(lines)
+
+
 class SettingsPage(QWidget):
     """Application settings for watched folders, thresholds, data location, language, and theme."""
     back_requested = Signal()
     settings_saved = Signal()
     theme_changed = Signal(str)
+    index_pdf_requested = Signal()
+    index_dxf_requested = Signal()
 
     def __init__(self, db: Any, catalog_index: Any, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
@@ -1060,13 +1091,14 @@ class SettingsPage(QWidget):
         self._load_values()
 
     def _setup_ui(self) -> None:
+        self.txt_folders = _FoldersTextCompat(self)
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
 
         self.header = create_page_header(
             "Application Settings",
-            "Configure watched DXF/PDF catalog directories, similarity thresholds, and storage paths.",
+            "Configure separate or shared DXF & PDF catalog directories, similarity thresholds, and storage paths.",
             on_back=self.back_requested.emit,
             is_dark=self.is_dark,
         )
@@ -1080,29 +1112,77 @@ class SettingsPage(QWidget):
         body_layout.setContentsMargins(30, 24, 30, 24)
         body_layout.setSpacing(20)
 
-        # 1. Folders Section
-        folders_box = QGroupBox("Catalog & DXF Library Directories")
+        # 1. Folders Section: PDF & DXF Directories
+        folders_box = QGroupBox("Design Catalog & DXF CAD Directories")
         folders_layout = QVBoxLayout(folders_box)
         folders_layout.setContentsMargins(16, 20, 16, 16)
-        folders_layout.setSpacing(10)
+        folders_layout.setSpacing(12)
 
-        self.txt_folders = QTextEdit()
-        self.txt_folders.setMaximumHeight(90)
-        self.txt_folders.setPlaceholderText("Enter folder paths containing DXF or PDF files (one per line)...")
-        folders_layout.addWidget(self.txt_folders)
+        # Same folder toggle
+        self.chk_same_folder = QCheckBox("Use the same folder path for both PDF catalogs and DXF CAD files")
+        self.chk_same_folder.setStyleSheet("font-weight: 600; color: #38BDF8;")
+        self.chk_same_folder.toggled.connect(self._on_same_folder_toggled)
+        folders_layout.addWidget(self.chk_same_folder)
 
-        f_btn_row = QHBoxLayout()
-        btn_add_folder = QPushButton("📁 Add Folder...")
-        btn_add_folder.setProperty("class", "secondaryBtn")
-        btn_add_folder.clicked.connect(self._browse_add_folder)
-        f_btn_row.addWidget(btn_add_folder)
+        # PDF Folder Row
+        self.lbl_pdf_folder = QLabel("📄 PDF Catalogs Directory (Reads .pdf catalog books & sheets):")
+        self.lbl_pdf_folder.setStyleSheet("font-weight: 600;")
+        folders_layout.addWidget(self.lbl_pdf_folder)
 
-        btn_open_folder = QPushButton("Open in File Explorer / Finder")
-        btn_open_folder.setProperty("class", "secondaryBtn")
-        btn_open_folder.clicked.connect(self._open_current_folder)
-        f_btn_row.addWidget(btn_open_folder)
-        f_btn_row.addStretch()
-        folders_layout.addLayout(f_btn_row)
+        pdf_row = QHBoxLayout()
+        self.input_pdf_folder = QLineEdit()
+        self.input_pdf_folder.setPlaceholderText("Select folder containing PDF catalog files (e.g., /path/to/pdf_catalogs)...")
+        self.input_pdf_folder.textChanged.connect(self._on_pdf_path_changed)
+        pdf_row.addWidget(self.input_pdf_folder, 1)
+
+        btn_browse_pdf = QPushButton("📁 Browse PDF...")
+        btn_browse_pdf.setProperty("class", "secondaryBtn")
+        btn_browse_pdf.clicked.connect(self._browse_pdf_folder)
+        pdf_row.addWidget(btn_browse_pdf)
+
+        btn_open_pdf = QPushButton("Open")
+        btn_open_pdf.setProperty("class", "secondaryBtn")
+        btn_open_pdf.clicked.connect(lambda: self._open_dir_path(self.input_pdf_folder.text()))
+        pdf_row.addWidget(btn_open_pdf)
+        folders_layout.addLayout(pdf_row)
+
+        # DXF Folder Row
+        self.lbl_dxf_folder = QLabel("📐 DXF CAD Library Directory (Reads .dxf CNC cut drawings):")
+        self.lbl_dxf_folder.setStyleSheet("font-weight: 600;")
+        folders_layout.addWidget(self.lbl_dxf_folder)
+
+        dxf_row = QHBoxLayout()
+        self.input_dxf_folder = QLineEdit()
+        self.input_dxf_folder.setPlaceholderText("Select folder containing DXF CAD files (e.g., /path/to/dxf_files)...")
+        self.input_dxf_folder.textChanged.connect(self._on_dxf_path_changed)
+        dxf_row.addWidget(self.input_dxf_folder, 1)
+
+        btn_browse_dxf = QPushButton("📁 Browse DXF...")
+        btn_browse_dxf.setProperty("class", "secondaryBtn")
+        btn_browse_dxf.clicked.connect(self._browse_dxf_folder)
+        dxf_row.addWidget(btn_browse_dxf)
+
+        btn_open_dxf = QPushButton("Open")
+        btn_open_dxf.setProperty("class", "secondaryBtn")
+        btn_open_dxf.clicked.connect(lambda: self._open_dir_path(self.input_dxf_folder.text()))
+        dxf_row.addWidget(btn_open_dxf)
+        folders_layout.addLayout(dxf_row)
+
+        # Quick Indexing shortcuts inside settings
+        idx_btn_row = QHBoxLayout()
+        btn_idx_pdf = QPushButton("⚡ Index PDF Catalogs Now")
+        btn_idx_pdf.setProperty("class", "secondaryBtn")
+        btn_idx_pdf.setToolTip("Scan and build vector index for all PDF catalogs in the selected folder")
+        btn_idx_pdf.clicked.connect(self._trigger_index_pdf)
+        idx_btn_row.addWidget(btn_idx_pdf)
+
+        btn_idx_dxf = QPushButton("⚡ Index DXF Library Now")
+        btn_idx_dxf.setProperty("class", "secondaryBtn")
+        btn_idx_dxf.setToolTip("Scan and build geometric vector index for all DXF CAD files in the selected folder")
+        btn_idx_dxf.clicked.connect(self._trigger_index_dxf)
+        idx_btn_row.addWidget(btn_idx_dxf)
+        idx_btn_row.addStretch()
+        folders_layout.addLayout(idx_btn_row)
 
         body_layout.addWidget(folders_box)
 
@@ -1209,11 +1289,81 @@ class SettingsPage(QWidget):
         theme_str = "light" if index == 1 else "dark"
         self.theme_changed.emit(theme_str)
 
+    def _on_same_folder_toggled(self, checked: bool) -> None:
+        if checked:
+            source = self.input_pdf_folder.text().strip() or self.input_dxf_folder.text().strip()
+            if source:
+                self.input_pdf_folder.setText(source)
+                self.input_dxf_folder.setText(source)
+
+    def _on_pdf_path_changed(self, text: str) -> None:
+        if self.chk_same_folder.isChecked() and self.input_dxf_folder.text() != text:
+            self.input_dxf_folder.setText(text)
+
+    def _on_dxf_path_changed(self, text: str) -> None:
+        if self.chk_same_folder.isChecked() and self.input_pdf_folder.text() != text:
+            self.input_pdf_folder.setText(text)
+
+    def _browse_pdf_folder(self) -> None:
+        curr = self.input_pdf_folder.text().strip()
+        folder = QFileDialog.getExistingDirectory(self, "Select PDF Catalogs Directory", curr)
+        if folder:
+            self.input_pdf_folder.setText(folder)
+            if self.chk_same_folder.isChecked():
+                self.input_dxf_folder.setText(folder)
+
+    def _browse_dxf_folder(self) -> None:
+        curr = self.input_dxf_folder.text().strip()
+        folder = QFileDialog.getExistingDirectory(self, "Select DXF CAD Library Directory", curr)
+        if folder:
+            self.input_dxf_folder.setText(folder)
+            if self.chk_same_folder.isChecked():
+                self.input_pdf_folder.setText(folder)
+
+    def _open_dir_path(self, path_str: str) -> None:
+        p = Path(path_str.strip())
+        if p.exists() and p.is_dir():
+            self._open_dir(p)
+        else:
+            QMessageBox.warning(self, "Directory Not Found", f"The directory does not exist:\n{path_str}")
+
+    def _trigger_index_pdf(self) -> None:
+        self._save_values(show_alert=False)
+        self.index_pdf_requested.emit()
+
+    def _trigger_index_dxf(self) -> None:
+        self._save_values(show_alert=False)
+        self.index_dxf_requested.emit()
+
     def _load_values(self) -> None:
         if not self.db:
             return
-        folders = self.db.get_setting("catalog_folders", "")
-        self.txt_folders.setPlainText(folders)
+
+        pdf_path = self.db.get_setting("catalog_root", "")
+        dxf_path = self.db.get_setting("dxf_root", "")
+
+        # Fallback from legacy catalog_folders if empty
+        if not pdf_path and not dxf_path:
+            legacy_lines = [l.strip() for l in self.db.get_setting("catalog_folders", "").splitlines() if l.strip()]
+            if legacy_lines:
+                pdf_path = legacy_lines[0]
+                dxf_path = legacy_lines[1] if len(legacy_lines) > 1 else legacy_lines[0]
+
+        same_setting = self.db.get_setting("same_folder_for_both", "")
+        if same_setting == "1" or (pdf_path and dxf_path and Path(pdf_path) == Path(dxf_path)):
+            is_same = True
+        elif same_setting == "0":
+            is_same = False
+        else:
+            is_same = (pdf_path == dxf_path) if (pdf_path and dxf_path) else False
+
+        self.chk_same_folder.blockSignals(True)
+        self.chk_same_folder.setChecked(is_same)
+        self.chk_same_folder.blockSignals(False)
+
+        self.input_pdf_folder.setText(pdf_path)
+        self.input_dxf_folder.setText(dxf_path)
+
         thresh = int(float(self.db.get_setting("similarity_threshold", "0.75")) * 100)
         self.slider_thresh.setValue(thresh)
         topk = int(self.db.get_setting("top_k", "30"))
@@ -1230,7 +1380,25 @@ class SettingsPage(QWidget):
     def _save_values(self, show_alert: bool = True) -> None:
         if not self.db:
             return
-        self.db.set_setting("catalog_folders", self.txt_folders.toPlainText().strip())
+
+        pdf_path = self.input_pdf_folder.text().strip()
+        dxf_path = self.input_dxf_folder.text().strip()
+        if self.chk_same_folder.isChecked():
+            shared = pdf_path or dxf_path
+            pdf_path = shared
+            dxf_path = shared
+
+        self.db.set_setting("catalog_root", pdf_path)
+        self.db.set_setting("dxf_root", dxf_path)
+        self.db.set_setting("same_folder_for_both", "1" if self.chk_same_folder.isChecked() else "0")
+
+        folders_list = []
+        if pdf_path:
+            folders_list.append(pdf_path)
+        if dxf_path and dxf_path != pdf_path:
+            folders_list.append(dxf_path)
+        self.db.set_setting("catalog_folders", "\n".join(folders_list))
+
         self.db.set_setting("similarity_threshold", str(self.slider_thresh.value() / 100.0))
         self.db.set_setting("top_k", str(self.spin_topk.value()))
         self.db.set_setting("language", self.combo_lang.currentText())
@@ -1240,7 +1408,7 @@ class SettingsPage(QWidget):
         self.theme_changed.emit(theme_str)
 
         if show_alert:
-            QMessageBox.information(self, "Saved", "Settings saved successfully!")
+            QMessageBox.information(self, "Saved", "Settings saved successfully!\nDirectory paths updated.")
         self.settings_saved.emit()
 
     def _reset_defaults(self) -> None:
@@ -1248,20 +1416,6 @@ class SettingsPage(QWidget):
         self.spin_topk.setValue(30)
         self.combo_rerank.setCurrentIndex(0)
         QMessageBox.information(self, "Reset", "Settings reset to defaults. Click 'Save Settings' to apply.")
-
-    def _browse_add_folder(self) -> None:
-        folder = QFileDialog.getExistingDirectory(self, "Select Folder Containing DXF / PDF Files")
-        if folder:
-            current = self.txt_folders.toPlainText().strip()
-            new_text = f"{current}\n{folder}" if current else folder
-            self.txt_folders.setPlainText(new_text)
-
-    def _open_current_folder(self) -> None:
-        lines = [line.strip() for line in self.txt_folders.toPlainText().splitlines() if line.strip()]
-        if lines and Path(lines[0]).exists():
-            self._open_dir(Path(lines[0]))
-        else:
-            QMessageBox.information(self, "Folder", "No valid folder path found to open.")
 
     def _open_data_dir(self) -> None:
         if self.catalog_index and self.catalog_index.data_dir.exists():
