@@ -1580,3 +1580,8 @@
 2026-10-16 21:24:59,762 [INFO] dxf_ingest: Extracted 2 designs (0 labels found) from DXF in 0.00 s (skipped 0 entities).
 2026-10-16 21:25:00,278 [INFO] dxf_ingest: Extracted 2 designs (0 labels found) from DXF in 0.00 s (skipped 0 entities).
 2026-10-16 21:44:02,296 [INFO] dxf_ingest: Extracted 1 designs (1 labels found) from DXF in 0.00 s (skipped 0 entities).
+2026-10-17 01:56:08,281 [INFO] dxf_ingest: Extracted 1 designs (1 labels found) from DXF in 0.00 s (skipped 0 entities).
+2026-10-17 10:50:45,223 [INFO] dxf_ingest: Extracted 1 designs (1 labels found) from DXF in 0.00 s (skipped 0 entities).
+2026-10-19 01:18:27,585 [INFO] dxf_ingest: Extracted 1 designs (1 labels found) from DXF in 0.00 s (skipped 0 entities).
+2026-10-19 01:18:30,367 [INFO] dxf_ingest: Extracted 10 designs (0 labels found) from DXF in 0.34 s (skipped 0 entities).
+2026-10-19 01:18:31,664 [INFO] dxf_ingest: Extracted 10 designs (0 labels found) from DXF in 0.17 s (skipped 0 entities).
