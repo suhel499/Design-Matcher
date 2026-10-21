@@ -1669,3 +1669,4 @@
 2026-10-21 02:50:13,893 [INFO] dxf_ingest: Extracted 2 designs (0 labels found) from DXF in 0.00 s (skipped 0 entities).
 2026-10-21 02:50:14,540 [INFO] dxf_ingest: Extracted 1 designs (1 labels found) from DXF in 0.00 s (skipped 0 entities).
 2026-10-21 02:50:14,549 [INFO] dxf_ingest: Extracted 2 designs (0 labels found) from DXF in 0.00 s (skipped 0 entities).
+2026-10-21 20:28:52,034 [INFO] dxf_ingest: Extracted 5 designs (0 labels found) from DXF in 0.19 s (skipped 0 entities).
