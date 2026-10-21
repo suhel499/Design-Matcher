@@ -126,7 +126,9 @@ def test_catalog_manager_page(qtbot, temp_dir):
     qtbot.addWidget(page)
 
     assert page.table_files.rowCount() == 1
-    assert page.table_files.item(0, 0).text() == "test1.dxf"
+    item = page.table_files.item(0, 0)
+    assert item is not None
+    assert item.text() == "test1.dxf"
 
     dxf_sig = []
     pdf_sig = []
@@ -153,8 +155,12 @@ def test_history_page(qtbot, temp_dir):
     qtbot.addWidget(page)
 
     assert page.table.rowCount() == 1
-    assert page.table.item(0, 3).text() == "gate_stencil.png"
-    assert "PD 101" in page.table.item(0, 5).text()
+    item_query = page.table.item(0, 3)
+    assert item_query is not None
+    assert item_query.text() == "gate_stencil.png"
+    item_top = page.table.item(0, 5)
+    assert item_top is not None
+    assert "PD 101" in item_top.text()
 
     reruns = []
     page.rerun_search.connect(lambda mode, query: reruns.append((mode, query)))
@@ -163,6 +169,19 @@ def test_history_page(qtbot, temp_dir):
     assert len(reruns) == 1
     assert reruns[0][0] == "mode_a"
     assert reruns[0][1] == "gate_stencil.png"
+
+    # Verify edge cases: row with None items does not crash _rerun_selected or _delete_selected
+    page.table.setRowCount(2)  # row 1 will have None items
+    page.table.selectRow(1)
+    page._rerun_selected()
+    assert len(reruns) == 1  # No new rerun emitted, no crash
+
+    page._delete_selected()  # Should safely ignore row 1 with None item
+
+    # Normal delete of row 0
+    page.table.selectRow(0)
+    page._delete_selected()
+    assert page.table.rowCount() == 0
 
 
 def test_help_page_diagnostics(qtbot):
@@ -301,6 +320,41 @@ def test_contact_page_validation(qtbot, monkeypatch):
     page.txt_desc.setPlainText("<script>alert('xss')</script> test message here")
     page._submit_inquiry()
     assert warn_mock.called
+
+
+def test_contact_page_server_url_handling(qtbot, monkeypatch):
+    from unittest.mock import MagicMock
+    from PySide6.QtWidgets import QMessageBox
+
+    info_mock = MagicMock()
+    monkeypatch.setattr(QMessageBox, "information", info_mock)
+
+    # Case 1: license_manager is None (must not raise AttributeError)
+    mock_db = MagicMock()
+    mock_db.save_contact_submission.return_value = "ticket-none-lm"
+    page_none = ContactPage(db=mock_db, license_manager=None, server_url=None)
+    qtbot.addWidget(page_none)
+
+    page_none.txt_name.setText("Test User")
+    page_none.txt_email.setText("test@example.com")
+    page_none.txt_summary.setText("Subject")
+    page_none.txt_desc.setText("Testing inquiry with None license_manager")
+    page_none._submit_inquiry()
+    assert info_mock.called
+
+    # Case 2: license_manager is provided with server_url
+    info_mock.reset_mock()
+    mock_lm = MagicMock()
+    mock_lm.server_url = "http://lm-server:8080"
+    page_lm = ContactPage(db=mock_db, license_manager=mock_lm, server_url="http://page-server:8080")
+    qtbot.addWidget(page_lm)
+
+    page_lm.txt_name.setText("Test User")
+    page_lm.txt_email.setText("test@example.com")
+    page_lm.txt_summary.setText("Subject")
+    page_lm.txt_desc.setText("Testing inquiry with license_manager server_url")
+    page_lm._submit_inquiry()
+    assert info_mock.called
 
 
 def test_privacy_and_terms_pages(qtbot):

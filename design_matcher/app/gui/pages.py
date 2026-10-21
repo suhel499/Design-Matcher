@@ -31,6 +31,7 @@ from typing import Any, Callable, Dict, List, Optional
 from PySide6.QtCore import QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QFont, QIcon, QPixmap
 from PySide6.QtWidgets import (
+    QAbstractItemView,
     QApplication,
     QCheckBox,
     QComboBox,
@@ -1111,8 +1112,9 @@ class SettingsPage(QWidget):
         scroll = QScrollArea(self)
         scroll.setWidgetResizable(True)
 
-        body = QWidget()
+        body = QWidget(self)
         body.setObjectName("pageBody")
+        self.page_body = body
         body_layout = QVBoxLayout(body)
         # Utilise available width with left/right margins <= 50px
         body_layout.setContentsMargins(36, 20, 36, 28)
@@ -1685,6 +1687,8 @@ class CatalogManagerPage(QWidget):
         self.table_files.setHorizontalHeaderLabels(["File Name", "Type", "Extracted Designs", "File Path"])
         self.table_files.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Interactive)
         self.table_files.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
+        self.table_files.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.table_files.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         l1.addWidget(self.table_files)
         tabs.addTab(t1, "Indexed Library Items")
 
@@ -1763,17 +1767,20 @@ class CatalogManagerPage(QWidget):
                 logger.debug("Failed querying dxf_db: %s", e)
 
         if self.catalog_index and self.catalog_index.db:
-            with self.catalog_index.db._get_connection() as conn:
-                for r in conn.execute("SELECT pdf_path, page_count FROM indexed_files LIMIT 200").fetchall():
-                    p = Path(r["pdf_path"])
-                    rows.append((p.name, "PDF", r["page_count"], str(p)))
+            try:
+                with self.catalog_index.db._get_connection() as conn:
+                    for r in conn.execute("SELECT pdf_path, page_count FROM indexed_files LIMIT 200").fetchall():
+                        p = Path(r["pdf_path"])
+                        rows.append((p.name, "PDF", r["page_count"], str(p)))
+            except Exception as e:
+                logger.debug("Failed querying catalog_index.db: %s", e)
 
         self.table_files.setRowCount(len(rows))
         for i, row in enumerate(rows):
-            self.table_files.setItem(i, 0, QTableWidgetItem(row[0]))
-            self.table_files.setItem(i, 1, QTableWidgetItem(row[1]))
-            self.table_files.setItem(i, 2, QTableWidgetItem(str(row[2])))
-            self.table_files.setItem(i, 3, QTableWidgetItem(row[3]))
+            self.table_files.setItem(i, 0, QTableWidgetItem(str(row[0] or "")))
+            self.table_files.setItem(i, 1, QTableWidgetItem(str(row[1] or "")))
+            self.table_files.setItem(i, 2, QTableWidgetItem(str(row[2] or 0)))
+            self.table_files.setItem(i, 3, QTableWidgetItem(str(row[3] or "")))
 
 
 # ==============================================================================
@@ -1836,6 +1843,9 @@ class HistoryPage(QWidget):
         self.table.setColumnCount(6)
         self.table.setHorizontalHeaderLabels(["ID", "Timestamp", "Mode", "Query / Details", "Results", "Top Match"])
         self.table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
+        self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.itemDoubleClicked.connect(lambda *_: self._rerun_selected())
         body_layout.addWidget(self.table, 1)
 
@@ -1847,12 +1857,17 @@ class HistoryPage(QWidget):
         items = self.db.get_search_history(100)
         self.table.setRowCount(len(items))
         for i, item in enumerate(items):
-            self.table.setItem(i, 0, QTableWidgetItem(str(item.get("id"))))
-            self.table.setItem(i, 1, QTableWidgetItem(str(item.get("timestamp"))))
-            self.table.setItem(i, 2, QTableWidgetItem(str(item.get("search_mode"))))
+            self.table.setItem(i, 0, QTableWidgetItem(str(item.get("id") or "")))
+            self.table.setItem(i, 1, QTableWidgetItem(str(item.get("timestamp") or "")))
+            self.table.setItem(i, 2, QTableWidgetItem(str(item.get("search_mode") or "")))
             self.table.setItem(i, 3, QTableWidgetItem(str(item.get("query_text") or "-")))
             self.table.setItem(i, 4, QTableWidgetItem(str(item.get("results_count") or 0)))
-            top = f"{item.get('top_match_code') or '-'} ({int((item.get('top_match_score') or 0)*100)}%)"
+            score = item.get("top_match_score")
+            try:
+                score_pct = int(float(score or 0) * 100)
+            except (ValueError, TypeError):
+                score_pct = 0
+            top = f"{item.get('top_match_code') or '-'} ({score_pct}%)"
             self.table.setItem(i, 5, QTableWidgetItem(top))
 
     def _delete_selected(self) -> None:
@@ -1860,10 +1875,14 @@ class HistoryPage(QWidget):
         if not rows:
             QMessageBox.information(self, "Selection", "Select a search record to delete.")
             return
+        deleted = False
         for r in sorted(rows, reverse=True):
-            item_id = int(self.table.item(r, 0).text())
-            self.db.delete_search_history(item_id)
-        self.refresh()
+            item = self.table.item(r, 0)
+            if item and item.text().strip().isdigit():
+                self.db.delete_search_history(int(item.text().strip()))
+                deleted = True
+        if deleted:
+            self.refresh()
 
     def _rerun_selected(self) -> None:
         rows = list(set(index.row() for index in self.table.selectedIndexes()))
@@ -1871,8 +1890,14 @@ class HistoryPage(QWidget):
             QMessageBox.information(self, "Selection", "Select a search record to rerun.")
             return
         row = rows[0]
-        mode = self.table.item(row, 2).text()
-        query = self.table.item(row, 3).text()
+        mode_item = self.table.item(row, 2)
+        query_item = self.table.item(row, 3)
+        if not mode_item:
+            return
+        mode = mode_item.text().strip()
+        query = query_item.text().strip() if query_item else ""
+        if query == "-":
+            query = ""
         self.rerun_search.emit(mode, query)
 
     def _clear_all(self) -> None:
@@ -2223,8 +2248,8 @@ class BackupPage(QWidget):
         )
         main_layout.addWidget(self.header)
 
-        self.scroll = QScrollArea(self)
-        self.scroll.setWidgetResizable(True)
+        self.scroll_area = QScrollArea(self)
+        self.scroll_area.setWidgetResizable(True)
         self.body = QWidget()
         self.body.setObjectName("pageBody")
         body_layout = QVBoxLayout(self.body)
@@ -2285,8 +2310,8 @@ class BackupPage(QWidget):
         body_layout.addWidget(self.del_box)
         body_layout.addStretch()
 
-        self.scroll.setWidget(self.body)
-        main_layout.addWidget(self.scroll, 1)
+        self.scroll_area.setWidget(self.body)
+        main_layout.addWidget(self.scroll_area, 1)
 
     def apply_theme(self, is_dark: bool) -> None:
         self.is_dark = is_dark
@@ -2589,8 +2614,8 @@ class ContactPage(QWidget):
         )
         main_layout.addWidget(self.header)
 
-        self.scroll = QScrollArea(self)
-        self.scroll.setWidgetResizable(True)
+        self.scroll_area = QScrollArea(self)
+        self.scroll_area.setWidgetResizable(True)
         self.body = QWidget()
         self.body.setObjectName("pageBody")
         body_layout = QVBoxLayout(self.body)
@@ -2775,8 +2800,8 @@ class ContactPage(QWidget):
 
         body_layout.addStretch()
 
-        self.scroll.setWidget(self.body)
-        main_layout.addWidget(self.scroll, 1)
+        self.scroll_area.setWidget(self.body)
+        main_layout.addWidget(self.scroll_area, 1)
 
     def _submit_inquiry(self) -> None:
         """Validates and persists the contact form submission to the database."""
@@ -2823,12 +2848,15 @@ class ContactPage(QWidget):
 
         # Attempt A: Submit directly to central Server Authority REST API (saves directly to server MySQL DB)
         candidate_urls = []
-        if os.environ.get("DESIGN_MATCHER_SERVER_URL"):
-            candidate_urls.append(os.environ["DESIGN_MATCHER_SERVER_URL"].rstrip("/"))
+        env_url = os.environ.get("DESIGN_MATCHER_SERVER_URL")
+        if env_url:
+            candidate_urls.append(env_url.rstrip("/"))
         if getattr(self, "server_url", None):
             candidate_urls.append(str(self.server_url).rstrip("/"))
-        if getattr(getattr(self, "license_manager", None), "server_url", None):
-            candidate_urls.append(str(self.license_manager.server_url).rstrip("/"))
+        if self.license_manager is not None:
+            lm_server = getattr(self.license_manager, "server_url", None)
+            if lm_server:
+                candidate_urls.append(str(lm_server).rstrip("/"))
         candidate_urls.extend(["http://127.0.0.1:8000", "http://localhost:8000", "http://dm.suiteutil.com"])
 
         seen_urls = set()
@@ -2874,15 +2902,17 @@ class ContactPage(QWidget):
         # Attempt B: Fallback to direct database layer (which also mirrors to design_matcher_licensing in MySQL)
         if not sub_id:
             try:
-                if getattr(self, "db", None):
-                    db = self.db
-                else:
+                db = self.db
+                if db is None:
                     try:
                         from app.core.db import CatalogDatabase
                     except ImportError:
                         from design_matcher.app.core.db import CatalogDatabase
                     db = CatalogDatabase()
-                sub_id = db.save_contact_submission(name=name, email=email, subject=subject, message=message)
+                if hasattr(db, "save_contact_submission"):
+                    sub_id = db.save_contact_submission(name=name, email=email, subject=subject, message=message)
+                else:
+                    sub_id = None
                 saved_on_server = getattr(db, "is_mysql", False)
                 logger.info("Saved contact inquiry via database layer with ID %s (saved_on_server=%s)", sub_id, saved_on_server)
             except Exception as exc:
@@ -3065,8 +3095,8 @@ class PrivacyPolicyPage(QWidget):
         )
         main_layout.addWidget(self.header)
 
-        self.scroll = QScrollArea(self)
-        self.scroll.setWidgetResizable(True)
+        self.scroll_area = QScrollArea(self)
+        self.scroll_area.setWidgetResizable(True)
         self.body = QWidget()
         self.body.setObjectName("pageBody")
         body_layout = QVBoxLayout(self.body)
@@ -3077,8 +3107,8 @@ class PrivacyPolicyPage(QWidget):
         self.txt_privacy.setReadOnly(True)
         body_layout.addWidget(self.txt_privacy, 1)
 
-        self.scroll.setWidget(self.body)
-        main_layout.addWidget(self.scroll, 1)
+        self.scroll_area.setWidget(self.body)
+        main_layout.addWidget(self.scroll_area, 1)
 
     def apply_theme(self, is_dark: bool) -> None:
         self.is_dark = is_dark
@@ -3157,8 +3187,8 @@ class TermsConditionsPage(QWidget):
         )
         main_layout.addWidget(self.header)
 
-        self.scroll = QScrollArea(self)
-        self.scroll.setWidgetResizable(True)
+        self.scroll_area = QScrollArea(self)
+        self.scroll_area.setWidgetResizable(True)
         self.body = QWidget()
         self.body.setObjectName("pageBody")
         body_layout = QVBoxLayout(self.body)
@@ -3169,8 +3199,8 @@ class TermsConditionsPage(QWidget):
         self.txt_terms.setReadOnly(True)
         body_layout.addWidget(self.txt_terms, 1)
 
-        self.scroll.setWidget(self.body)
-        main_layout.addWidget(self.scroll, 1)
+        self.scroll_area.setWidget(self.body)
+        main_layout.addWidget(self.scroll_area, 1)
 
     def apply_theme(self, is_dark: bool) -> None:
         self.is_dark = is_dark
