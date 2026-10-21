@@ -537,7 +537,7 @@ PAGE_STYLESHEET = get_page_stylesheet(True)
 
 def create_page_header(
     title: str,
-    subtitle: str,
+    subtitle: str = "",
     on_back: Optional[Callable[[], None]] = None,
     is_dark: bool = True,
 ) -> QFrame:
@@ -560,10 +560,13 @@ def create_page_header(
     vbox.setSpacing(2)
     lbl_title = QLabel(title, header)
     lbl_title.setObjectName("pageHeaderTitle")
-    lbl_sub = QLabel(subtitle, header)
-    lbl_sub.setObjectName("pageHeaderSub")
     vbox.addWidget(lbl_title)
-    vbox.addWidget(lbl_sub)
+
+    lbl_sub = None
+    if subtitle:
+        lbl_sub = QLabel(subtitle, header)
+        lbl_sub.setObjectName("pageHeaderSub")
+        vbox.addWidget(lbl_sub)
     layout.addLayout(vbox)
 
     layout.addStretch()
@@ -572,7 +575,8 @@ def create_page_header(
         if dark:
             header.setStyleSheet("QFrame#pageHeader { background-color: #0F172A; border-bottom: 1px solid #1E293B; padding: 12px 20px; }")
             lbl_title.setStyleSheet("font-size: 18px; font-weight: 700; color: #FFFFFF; background: transparent;")
-            lbl_sub.setStyleSheet("font-size: 12px; color: #94A3B8; background: transparent;")
+            if lbl_sub:
+                lbl_sub.setStyleSheet("font-size: 12px; color: #94A3B8; background: transparent;")
             if back_btn:
                 back_btn.setStyleSheet(
                     "QPushButton#headerBackBtn { background: #1E293B; color: #38BDF8; border: 1px solid #334155; "
@@ -582,7 +586,8 @@ def create_page_header(
         else:
             header.setStyleSheet("QFrame#pageHeader { background-color: #FFFFFF; border-bottom: 1px solid #E2E8F0; padding: 12px 20px; }")
             lbl_title.setStyleSheet("font-size: 18px; font-weight: 700; color: #0F172A; background: transparent;")
-            lbl_sub.setStyleSheet("font-size: 12px; color: #64748B; background: transparent;")
+            if lbl_sub:
+                lbl_sub.setStyleSheet("font-size: 12px; color: #64748B; background: transparent;")
             if back_btn:
                 back_btn.setStyleSheet(
                     "QPushButton#headerBackBtn { background: #F1F5F9; color: #2563EB; border: 1px solid #CBD5E1; "
@@ -804,7 +809,6 @@ class LicensePage(QWidget):
         # Top Header
         self.header = create_page_header(
             "Activation & Subscription Management",
-            "View active plan, seat allocations, machine hardware fingerprint, and offline licensing tools.",
             on_back=self.back_requested.emit,
             is_dark=self.is_dark,
         )
@@ -1099,7 +1103,6 @@ class SettingsPage(QWidget):
 
         self.header = create_page_header(
             "Application Settings",
-            "Configure CAD linework matching, search accuracy, catalog directories, and preferences.",
             on_back=self.back_requested.emit,
             is_dark=self.is_dark,
         )
@@ -1631,7 +1634,6 @@ class CatalogManagerPage(QWidget):
 
         header = create_page_header(
             "Catalog & DXF Index Manager",
-            "Review indexing breakdown, diagnose parsing warnings or missing layers, and trigger re-indexing.",
             on_back=self.back_requested.emit,
         )
         main_layout.addWidget(header)
@@ -1797,7 +1799,6 @@ class HistoryPage(QWidget):
 
         header = create_page_header(
             "Search History",
-            "Review past customer searches, rerun previous queries, or delete search logs.",
             on_back=self.back_requested.emit,
         )
         main_layout.addWidget(header)
@@ -1902,7 +1903,6 @@ class HelpPage(QWidget):
 
         self.header = create_page_header(
             "Help, Documentation & Troubleshooting",
-            "Step-by-step user guide and real-time local engine diagnostic checks.",
             on_back=self.back_requested.emit,
             is_dark=self.is_dark,
         )
@@ -2047,7 +2047,6 @@ class UpdatesPage(QWidget):
 
         self.header = create_page_header(
             "Software Updates",
-            "Check for application updates, view release notes, and manage update preferences.",
             on_back=self.back_requested.emit,
             is_dark=self.is_dark,
         )
@@ -2219,7 +2218,6 @@ class BackupPage(QWidget):
 
         self.header = create_page_header(
             "Backup, Restore & Data Privacy",
-            "Export data archives, restore existing backups, or wipe all local application data.",
             on_back=self.back_requested.emit,
             is_dark=self.is_dark,
         )
@@ -2396,7 +2394,6 @@ class AboutPage(QWidget):
 
         self.header = create_page_header(
             "About Design Matcher & Technical Specs",
-            "Software architecture, founding team, and engineering specifications.",
             on_back=self.back_requested.emit,
             is_dark=self.is_dark,
         )
@@ -2587,7 +2584,6 @@ class ContactPage(QWidget):
 
         self.header = create_page_header(
             "Contact Us & Technical Support",
-            "Direct contact with founders Suhel Mulani and Nihal Mulani, inquiry composer, and zero-PII diagnostic tools.",
             on_back=self.back_requested.emit,
             is_dark=self.is_dark,
         )
@@ -3064,7 +3060,6 @@ class PrivacyPolicyPage(QWidget):
 
         self.header = create_page_header(
             "Privacy Policy & Data Sovereignty",
-            "Our transparent commitment to 100% on-device processing and complete data privacy.",
             on_back=self.back_requested.emit,
             is_dark=self.is_dark,
         )
@@ -3157,7 +3152,6 @@ class TermsConditionsPage(QWidget):
 
         self.header = create_page_header(
             "Terms & Conditions of Software Use",
-            "Commercial license agreement, acceptable fabrication use, and workshop safety guidelines.",
             on_back=self.back_requested.emit,
             is_dark=self.is_dark,
         )
