@@ -399,39 +399,137 @@ class LicenseManager:
     def activate_online(self, license_key: str, server_url: Optional[str] = None) -> Tuple[bool, str]:
         """
         Activates a license key with the central server over HTTPS.
+        Attempts primary server, local licensing authority instances, and local database fallback.
         """
-        url = (server_url or self.server_url).rstrip("/") + "/api/v1/licenses/activate"
-        dev_info = get_device_info()
+        clean_key = license_key.strip()
+        if not clean_key:
+            return False, "Please enter a valid license key."
 
+        dev_info = get_device_info()
         req_payload = {
-            "license_key": license_key.strip(),
+            "license_key": clean_key,
             "machine_fingerprint": dev_info["machine_fingerprint"],
             "machine_name": dev_info["machine_name"],
             "os_info": dev_info["os_info"],
             "nonce": secrets.token_hex(16),
         }
 
+        urls_to_try = []
+        if server_url and server_url.strip():
+            urls_to_try.append(server_url.strip().rstrip("/") + "/api/v1/licenses/activate")
+        else:
+            if self.server_url:
+                urls_to_try.append(self.server_url.rstrip("/") + "/api/v1/licenses/activate")
+            urls_to_try.append("http://127.0.0.1:8000/api/v1/licenses/activate")
+            urls_to_try.append("http://localhost:8000/api/v1/licenses/activate")
+
+        last_err = ""
+        for url in urls_to_try:
+            try:
+                with httpx.Client(timeout=6.0) as client:
+                    res = client.post(url, json=req_payload)
+
+                if res.status_code == 200:
+                    data = res.json()
+                    signed_file = data.get("license_file")
+                    if not signed_file:
+                        return False, "Server returned invalid activation response: missing license_file."
+                    return self.save_signed_license(signed_file)
+                else:
+                    try:
+                        err_json = res.json()
+                        detail = err_json.get("detail", res.text)
+                    except Exception:
+                        detail = res.text
+                    last_err = detail
+                    # If license key not found on this URL, continue to next candidate server
+                    if "not found" in detail.lower():
+                        continue
+                    return False, f"Activation rejected by server: {detail}"
+
+            except Exception as exc:
+                last_err = str(exc)
+                continue
+
+        # Fallback: Direct local licensing authority check if database is available locally
         try:
-            with httpx.Client(timeout=10.0) as client:
-                res = client.post(url, json=req_payload)
+            from licensing_server.database import SessionLocal
+            from licensing_server.models import License, Subscription, DeviceActivation, utc_now, ensure_utc
+            from licensing_server.crypto import build_and_sign_license_payload
 
-            if res.status_code == 200:
-                data = res.json()
-                signed_file = data.get("license_file")
-                if not signed_file:
-                    return False, "Server returned invalid activation response: missing license_file."
-                return self.save_signed_license(signed_file)
-            else:
-                try:
-                    err_json = res.json()
-                    detail = err_json.get("detail", res.text)
-                except Exception:
-                    detail = res.text
-                return False, f"Activation rejected by server: {detail}"
+            db = SessionLocal()
+            try:
+                license_obj = db.query(License).filter(License.license_key == clean_key).first()
+                if license_obj:
+                    if license_obj.status != "ACTIVE":
+                        return False, f"License is {license_obj.status.lower()}."
 
-        except Exception as exc:
-            logger.warning("Online activation network error: %s", exc)
-            return False, f"Cannot connect to license server: {exc}"
+                    active_sub = (
+                        db.query(Subscription)
+                        .filter(Subscription.license_id == license_obj.id, Subscription.is_active == True)
+                        .order_by(Subscription.expires_at.desc())
+                        .first()
+                    )
+                    if not active_sub or ensure_utc(active_sub.expires_at) <= utc_now():
+                        return False, "Subscription has expired."
+
+                    # Verify or add device seat
+                    existing_dev = (
+                        db.query(DeviceActivation)
+                        .filter(
+                            DeviceActivation.license_id == license_obj.id,
+                            DeviceActivation.machine_fingerprint == dev_info["machine_fingerprint"],
+                            DeviceActivation.is_active == True,
+                        )
+                        .first()
+                    )
+                    if not existing_dev:
+                        active_count = (
+                            db.query(DeviceActivation)
+                            .filter(DeviceActivation.license_id == license_obj.id, DeviceActivation.is_active == True)
+                            .count()
+                        )
+                        if active_count >= license_obj.max_activations:
+                            return False, f"Device activation limit reached ({active_count}/{license_obj.max_activations})."
+
+                        new_dev = DeviceActivation(
+                            license_id=license_obj.id,
+                            machine_fingerprint=dev_info["machine_fingerprint"],
+                            machine_name=dev_info["machine_name"],
+                            os_info=dev_info["os_info"],
+                            ip_address="127.0.0.1",
+                            activated_at=utc_now(),
+                            last_checkin_at=utc_now(),
+                            is_active=True,
+                        )
+                        db.add(new_dev)
+                    else:
+                        existing_dev.last_checkin_at = utc_now()
+                    db.commit()
+
+                    customer = license_obj.customer
+                    product = license_obj.product
+                    signed_license = build_and_sign_license_payload(
+                        license_id=license_obj.id,
+                        license_key=license_obj.license_key,
+                        customer_id=customer.id if customer else "",
+                        customer_name=customer.name if customer else "Licensed User",
+                        product_code=product.product_code if product else "design-matcher",
+                        plan_type=license_obj.plan_type.lower() if license_obj.plan_type else "1_year",
+                        issued_at=active_sub.starts_at,
+                        expires_at=active_sub.expires_at,
+                        max_activations=license_obj.max_activations,
+                        status="ACTIVE",
+                        machine_fingerprint=dev_info["machine_fingerprint"],
+                        features=["dxf_matching", "pdf_catalog", "code_search", "dxf_export"],
+                    )
+                    return self.save_signed_license(signed_license)
+            finally:
+                db.close()
+        except Exception as local_exc:
+            logger.debug("Local licensing authority fallback error: %s", local_exc)
+
+        return False, f"Could not activate license with server: {last_err or 'Server unreachable or key not found.'}"
 
     def validate_online(self, server_url: Optional[str] = None) -> LicenseCheckResult:
         """
