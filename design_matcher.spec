@@ -182,6 +182,7 @@ for pkg in [
     "pymysql",
     "pydantic",
     "pydantic_core",
+    "licensing_server",
 ]:
     hiddenimports += safe_collect_submodules(pkg)
 
@@ -191,6 +192,7 @@ binaries = []
 binaries += collect_dynamic_libs("pypdfium2")
 binaries += collect_dynamic_libs("faiss")
 binaries += collect_dynamic_libs("shapely")
+binaries += collect_dynamic_libs("torch")
 try:
     binaries += collect_dynamic_libs("cv2")
 except Exception:
@@ -204,6 +206,8 @@ try:
         binaries.append((str(so_file), "torchvision"))
     for pyd_file in tv_dir.glob("*.pyd"):
         binaries.append((str(pyd_file), "torchvision"))
+    for dll_file in tv_dir.glob("*.dll"):
+        binaries.append((str(dll_file), "torchvision"))
     dylibs_dir = tv_dir / ".dylibs"
     if dylibs_dir.exists():
         for dylib in dylibs_dir.glob("*.dylib"):
@@ -216,11 +220,27 @@ entrypoint = str(project_root / "run.py")
 if not Path(entrypoint).exists():
     entrypoint = str(dm_dir / "app" / "main.py")
 
-# Ensure design_matcher source files are also present in bundle data
+# Ensure design_matcher source files and server assets are present in bundle data
+if (dm_dir / "app").exists():
+    datas.append((str(dm_dir / "app"), "app"))
+    datas.append((str(dm_dir / "app"), "design_matcher/app"))
+if (dm_dir / "engine").exists():
+    datas.append((str(dm_dir / "engine"), "engine"))
+    datas.append((str(dm_dir / "engine"), "design_matcher/engine"))
 if (dm_dir / "dxf_viewer.py").exists():
     datas.append((str(dm_dir / "dxf_viewer.py"), "design_matcher"))
 if (dm_dir / "dxf_ingest.py").exists():
     datas.append((str(dm_dir / "dxf_ingest.py"), "design_matcher"))
+if (project_root / "dxf_viewer.py").exists():
+    datas.append((str(project_root / "dxf_viewer.py"), "."))
+if (project_root / "dxf_ingest.py").exists():
+    datas.append((str(project_root / "dxf_ingest.py"), "."))
+if (project_root / "dxf_match.py").exists():
+    datas.append((str(project_root / "dxf_match.py"), "."))
+if (project_root / "licensing_server" / "admin_portal").exists():
+    datas.append((str(project_root / "licensing_server" / "admin_portal"), "licensing_server/admin_portal"))
+if (project_root / "licensing.db").exists():
+    datas.append((str(project_root / "licensing.db"), "."))
 
 # 5. Analysis
 a = Analysis(

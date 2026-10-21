@@ -13,18 +13,28 @@ import traceback
 from pathlib import Path
 
 # Add repo root and design_matcher to sys.path
-repo_root = Path(__file__).resolve().parent
-project_dir = repo_root / "design_matcher"
-if str(repo_root) not in sys.path:
-    sys.path.insert(0, str(repo_root))
-if str(project_dir) not in sys.path:
-    sys.path.insert(0, str(project_dir))
+if not getattr(sys, "frozen", False):
+    repo_root = Path(__file__).resolve().parent
+    project_dir = repo_root / "design_matcher"
+    if str(repo_root) not in sys.path:
+        sys.path.insert(0, str(repo_root))
+    if str(project_dir) not in sys.path:
+        sys.path.insert(0, str(project_dir))
+else:
+    # Running inside PyInstaller frozen executable
+    if hasattr(sys, "_MEIPASS"):
+        meipass = sys._MEIPASS
+        if meipass not in sys.path:
+            sys.path.insert(0, meipass)
+        dm_dir = Path(meipass) / "design_matcher"
+        if dm_dir.exists() and str(dm_dir) not in sys.path:
+            sys.path.insert(0, str(dm_dir))
 
 
 def _handle_fatal_error(exc: BaseException) -> None:
     """Shows user-friendly diagnostic window if GUI is available, else prints to stderr."""
     tb = traceback.format_exc()
-    sys.stderr.write(f"FATAL STARTUP ERROR:\n{exc}\n\n{tb}\n")
+    sys.stderr.write(f"FATAL STARTUP ERROR:\n{exc}\n\n{tb}\nsys.path:\n{sys.path}\nsys._MEIPASS: {getattr(sys, '_MEIPASS', None)}\n")
     try:
         from PySide6.QtWidgets import QApplication, QMessageBox
         app = QApplication.instance() or QApplication(sys.argv)
@@ -40,7 +50,10 @@ def _handle_fatal_error(exc: BaseException) -> None:
 
 if __name__ == "__main__":
     try:
-        from app.main import main
+        try:
+            from app.main import main
+        except ImportError:
+            from design_matcher.app.main import main
         main()
     except Exception as e:
         _handle_fatal_error(e)
