@@ -74,6 +74,14 @@ class MySQLConnectionWrapper:
         # Translate SQLite upsert for settings
         elif "ON CONFLICT(key) DO UPDATE SET" in translated or "ON CONFLICT(`key`)" in translated:
             translated = "INSERT INTO settings (`key`, `value`) VALUES (%s, %s) ON DUPLICATE KEY UPDATE `value` = VALUES(`value`);"
+        # Translate SQLite upsert for catalogue_files
+        elif "ON CONFLICT(path) DO UPDATE SET" in translated:
+            translated = re.sub(
+                r"ON CONFLICT\(path\) DO UPDATE SET.*",
+                "ON DUPLICATE KEY UPDATE filename = VALUES(filename), extension = VALUES(extension), file_size = VALUES(file_size), modified_ns = VALUES(modified_ns), content_hash = VALUES(content_hash), page_count = VALUES(page_count), searchable_metadata = VALUES(searchable_metadata), metadata_status = VALUES(metadata_status), visual_status = VALUES(visual_status), parser_version = VALUES(parser_version), error_message = VALUES(error_message), indexed_at = CURRENT_TIMESTAMP;",
+                translated,
+                flags=re.DOTALL,
+            )
         # Escape MySQL reserved keyword `key`
         translated = re.sub(r"\bsettings\s*\(\s*key\s*,", "settings (`key`,", translated)
         translated = re.sub(r"\bWHERE\s+key\s*=", "WHERE `key` =", translated)
@@ -268,6 +276,31 @@ class CatalogDatabase:
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
                 """
             )
+
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS catalogue_files (
+                    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                    path VARCHAR(700) NOT NULL UNIQUE,
+                    filename VARCHAR(255) NOT NULL,
+                    extension VARCHAR(32) NOT NULL,
+                    file_size BIGINT NOT NULL,
+                    modified_ns BIGINT NOT NULL,
+                    content_hash VARCHAR(128),
+                    page_count INT NOT NULL DEFAULT 0,
+                    searchable_metadata LONGTEXT,
+                    metadata_status VARCHAR(32) NOT NULL DEFAULT 'pending',
+                    visual_status VARCHAR(32) NOT NULL DEFAULT 'pending',
+                    parser_version VARCHAR(64),
+                    error_message TEXT,
+                    indexed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    INDEX idx_cat_extension (extension),
+                    INDEX idx_cat_metadata_status (metadata_status),
+                    INDEX idx_cat_visual_status (visual_status),
+                    INDEX idx_cat_hash (content_hash)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+                """
+            )
             # Auto-sync from SQLite if MySQL tables are empty and SQLite database has indexed data
             if self.db_path.exists():
                 try:
@@ -437,6 +470,75 @@ class CatalogDatabase:
                     cursor.execute(f"ALTER TABLE tiles ADD COLUMN {col_name} {col_def};")
 
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_tiles_design_code ON tiles(design_code);")
+
+            # Production Two-Stage Catalogue Manifest Table
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS catalogue_files (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    path TEXT NOT NULL UNIQUE,
+                    filename TEXT NOT NULL,
+                    extension TEXT NOT NULL,
+                    file_size INTEGER NOT NULL,
+                    modified_ns INTEGER NOT NULL,
+                    content_hash TEXT,
+                    page_count INTEGER NOT NULL DEFAULT 0,
+                    searchable_metadata TEXT,
+                    metadata_status TEXT NOT NULL DEFAULT 'pending',
+                    visual_status TEXT NOT NULL DEFAULT 'pending',
+                    parser_version TEXT,
+                    error_message TEXT,
+                    indexed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+                """
+            )
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_catalogue_extension ON catalogue_files(extension);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_catalogue_metadata_status ON catalogue_files(metadata_status);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_catalogue_visual_status ON catalogue_files(visual_status);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_catalogue_path ON catalogue_files(path);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_catalogue_hash ON catalogue_files(content_hash);")
+
+            # SQLite FTS5 Full-Text Search Virtual Table with triggers
+            try:
+                cursor.execute(
+                    """
+                    CREATE VIRTUAL TABLE IF NOT EXISTS catalogue_search USING fts5(
+                        filename,
+                        searchable_metadata,
+                        content='catalogue_files',
+                        content_rowid='id'
+                    );
+                    """
+                )
+                cursor.execute(
+                    """
+                    CREATE TRIGGER IF NOT EXISTS catalogue_files_ai AFTER INSERT ON catalogue_files BEGIN
+                        INSERT INTO catalogue_search(rowid, filename, searchable_metadata)
+                        VALUES (new.id, new.filename, new.searchable_metadata);
+                    END;
+                    """
+                )
+                cursor.execute(
+                    """
+                    CREATE TRIGGER IF NOT EXISTS catalogue_files_ad AFTER DELETE ON catalogue_files BEGIN
+                        INSERT INTO catalogue_search(catalogue_search, rowid, filename, searchable_metadata)
+                        VALUES('delete', old.id, old.filename, old.searchable_metadata);
+                    END;
+                    """
+                )
+                cursor.execute(
+                    """
+                    CREATE TRIGGER IF NOT EXISTS catalogue_files_au AFTER UPDATE ON catalogue_files BEGIN
+                        INSERT INTO catalogue_search(catalogue_search, rowid, filename, searchable_metadata)
+                        VALUES('delete', old.id, old.filename, old.searchable_metadata);
+                        INSERT INTO catalogue_search(rowid, filename, searchable_metadata)
+                        VALUES (new.id, new.filename, new.searchable_metadata);
+                    END;
+                    """
+                )
+            except Exception as fts_exc:
+                logger.warning("FTS5 full-text search initialization skipped: %s", fts_exc)
+
             conn.commit()
             logger.debug("Database initialized at %s", self.db_path)
 
@@ -454,6 +556,204 @@ class CatalogDatabase:
         with self._get_connection() as conn:
             rows = conn.execute("SELECT * FROM indexed_files ORDER BY pdf_path").fetchall()
             return [dict(r) for r in rows]
+
+    # -------------------------------------------------------------------------
+    # Two-Stage Catalogue Manifest & FTS Search API
+    # -------------------------------------------------------------------------
+
+    def upsert_catalogue_file(
+        self,
+        path: str | Path,
+        filename: str,
+        extension: str,
+        file_size: int,
+        modified_ns: int,
+        content_hash: Optional[str] = None,
+        page_count: int = 0,
+        searchable_metadata: str = "",
+        metadata_status: str = "completed",
+        visual_status: str = "pending",
+        parser_version: str = "1.0",
+        error_message: str = "",
+    ) -> None:
+        """Inserts or updates a catalogue file manifest record."""
+        norm_path = str(Path(path).resolve())
+        with self._get_connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO catalogue_files (
+                    path, filename, extension, file_size, modified_ns, content_hash,
+                    page_count, searchable_metadata, metadata_status, visual_status,
+                    parser_version, error_message, indexed_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(path) DO UPDATE SET
+                    filename = excluded.filename,
+                    extension = excluded.extension,
+                    file_size = excluded.file_size,
+                    modified_ns = excluded.modified_ns,
+                    content_hash = excluded.content_hash,
+                    page_count = excluded.page_count,
+                    searchable_metadata = excluded.searchable_metadata,
+                    metadata_status = excluded.metadata_status,
+                    visual_status = excluded.visual_status,
+                    parser_version = excluded.parser_version,
+                    error_message = excluded.error_message,
+                    indexed_at = CURRENT_TIMESTAMP
+                """,
+                (
+                    norm_path, filename, extension, file_size, modified_ns,
+                    content_hash, page_count, searchable_metadata, metadata_status,
+                    visual_status, parser_version, error_message,
+                ),
+            )
+            conn.commit()
+
+    def upsert_catalogue_files_batch(self, records: list[dict[str, Any]]) -> None:
+        """Batch inserts or updates multiple catalogue files in a single transaction."""
+        if not records:
+            return
+        sql = """
+            INSERT INTO catalogue_files (
+                path, filename, extension, file_size, modified_ns, content_hash,
+                page_count, searchable_metadata, metadata_status, visual_status,
+                parser_version, error_message, indexed_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(path) DO UPDATE SET
+                filename = excluded.filename,
+                extension = excluded.extension,
+                file_size = excluded.file_size,
+                modified_ns = excluded.modified_ns,
+                content_hash = excluded.content_hash,
+                page_count = excluded.page_count,
+                searchable_metadata = excluded.searchable_metadata,
+                metadata_status = excluded.metadata_status,
+                visual_status = excluded.visual_status,
+                parser_version = excluded.parser_version,
+                error_message = excluded.error_message,
+                indexed_at = CURRENT_TIMESTAMP
+        """
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            for r in records:
+                norm_p = str(Path(r["path"]).resolve())
+                cursor.execute(
+                    sql,
+                    (
+                        norm_p,
+                        r.get("filename", Path(norm_p).name),
+                        r.get("extension", Path(norm_p).suffix.lower()),
+                        int(r.get("file_size", 0)),
+                        int(r.get("modified_ns", 0)),
+                        r.get("content_hash"),
+                        int(r.get("page_count", 0)),
+                        r.get("searchable_metadata", ""),
+                        r.get("metadata_status", "completed"),
+                        r.get("visual_status", "pending"),
+                        r.get("parser_version", "1.0"),
+                        r.get("error_message", ""),
+                    ),
+                )
+            conn.commit()
+
+    def get_catalogue_file(self, path: str | Path) -> Optional[dict[str, Any]]:
+        """Retrieves a catalogue manifest record by path."""
+        norm_path = str(Path(path).resolve())
+        with self._get_connection() as conn:
+            row = conn.execute("SELECT * FROM catalogue_files WHERE path = ?", (norm_path,)).fetchone()
+            return dict(row) if row else None
+
+    def get_all_catalogue_files(self) -> list[dict[str, Any]]:
+        """Retrieves all catalogue manifest records."""
+        with self._get_connection() as conn:
+            rows = conn.execute("SELECT * FROM catalogue_files ORDER BY filename ASC").fetchall()
+            return [dict(r) for r in rows]
+
+    def get_pending_visual_files(self, limit: Optional[int] = None) -> list[dict[str, Any]]:
+        """Retrieves files where metadata is indexed but visual features are pending or failed."""
+        query = "SELECT * FROM catalogue_files WHERE visual_status IN ('pending', 'failed') ORDER BY id ASC"
+        params: tuple[Any, ...] = ()
+        if limit is not None:
+            query += " LIMIT ?"
+            params = (limit,)
+        with self._get_connection() as conn:
+            rows = conn.execute(query, params).fetchall()
+            return [dict(r) for r in rows]
+
+    def update_catalogue_visual_status(
+        self,
+        path: str | Path,
+        status: str,
+        error_message: str = "",
+    ) -> None:
+        """Updates the visual processing status ('completed', 'failed', 'processing') for a file."""
+        norm_path = str(Path(path).resolve())
+        with self._get_connection() as conn:
+            conn.execute(
+                "UPDATE catalogue_files SET visual_status = ?, error_message = ? WHERE path = ?",
+                (status, error_message, norm_path),
+            )
+            conn.commit()
+
+    def search_catalogue_fts(self, query: str, limit: int = 50) -> list[dict[str, Any]]:
+        """
+        Fast full-text search across filenames and extracted metadata using SQLite FTS5,
+        with fallback to substring matching if FTS5 is uninitialized or on MySQL.
+        """
+        if not query or not query.strip():
+            return []
+        clean_q = query.strip()
+
+        # Sanitize query for FTS5 (avoid syntax errors with special chars)
+        sanitized_words = [re.sub(r'[^a-zA-Z0-9_\-\.]', '', w) for w in clean_q.split()]
+        sanitized_words = [w for w in sanitized_words if w]
+        if not sanitized_words:
+            return []
+
+        fts_query = " ".join(f'"{w}"*' for w in sanitized_words)
+
+        with self._get_connection() as conn:
+            try:
+                # Try FTS5 join
+                rows = conn.execute(
+                    """
+                    SELECT cf.*
+                    FROM catalogue_search cs
+                    JOIN catalogue_files cf ON cf.id = cs.rowid
+                    WHERE catalogue_search MATCH ?
+                    LIMIT ?
+                    """,
+                    (fts_query, limit),
+                ).fetchall()
+                if rows:
+                    return [dict(r) for r in rows]
+            except Exception as fts_err:
+                logger.debug("FTS5 match failed (%s), falling back to LIKE search", fts_err)
+
+            # Fallback to standard LIKE matching across filename and searchable_metadata
+            like_pat = f"%{clean_q}%"
+            rows = conn.execute(
+                """
+                SELECT * FROM catalogue_files
+                WHERE filename LIKE ? OR searchable_metadata LIKE ?
+                ORDER BY filename ASC
+                LIMIT ?
+                """,
+                (like_pat, like_pat, limit),
+            ).fetchall()
+            return [dict(r) for r in rows]
+
+    def cleanup_missing_catalogue_files(self, existing_paths: set[str]) -> list[str]:
+        """Removes manifest entries for files that were deleted from disk."""
+        all_records = self.get_all_catalogue_files()
+        deleted_paths: list[str] = []
+        with self._get_connection() as conn:
+            for rec in all_records:
+                p_str = rec["path"]
+                if p_str not in existing_paths:
+                    conn.execute("DELETE FROM catalogue_files WHERE path = ?", (p_str,))
+                    deleted_paths.append(p_str)
+            conn.commit()
+        return deleted_paths
 
     def record_indexed_file(
         self,

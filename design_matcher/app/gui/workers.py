@@ -34,6 +34,7 @@ class IndexWorker(QThread):
         include_subregions: bool = True,
         run_ocr: bool = True,
         force: bool = False,
+        mode: str = "full",
         parent: Optional[QObject] = None,
     ) -> None:
         super().__init__(parent)
@@ -43,6 +44,7 @@ class IndexWorker(QThread):
         self.include_subregions = include_subregions
         self.run_ocr = run_ocr
         self.force = force
+        self.mode = mode
         self._is_cancelled = False
 
     def cancel(self) -> None:
@@ -65,15 +67,27 @@ class IndexWorker(QThread):
             })
 
         try:
-            new_tiles = self.catalog_index.index_catalog(
-                root_dir=self.root_dir,
-                dpi=self.dpi,
-                include_subregions=self.include_subregions,
-                run_ocr=self.run_ocr,
-                progress_cb=progress_cb,
-                cancel_check=lambda: self._is_cancelled,
-                force_reindex=self.force,
-            )
+            if hasattr(self.catalog_index, "index_catalog_optimized"):
+                new_tiles = self.catalog_index.index_catalog_optimized(
+                    root_dir=self.root_dir,
+                    dpi=self.dpi,
+                    include_subregions=self.include_subregions,
+                    run_ocr=self.run_ocr,
+                    mode=self.mode,
+                    progress_cb=progress_cb,
+                    cancel_check=lambda: self._is_cancelled,
+                    force_reindex=self.force,
+                )
+            else:
+                new_tiles = self.catalog_index.index_catalog(
+                    root_dir=self.root_dir,
+                    dpi=self.dpi,
+                    include_subregions=self.include_subregions,
+                    run_ocr=self.run_ocr,
+                    progress_cb=progress_cb,
+                    cancel_check=lambda: self._is_cancelled,
+                    force_reindex=self.force,
+                )
             self.finished_signal.emit(new_tiles)
         except Exception as exc:
             logger.exception("IndexWorker error: %s", exc)

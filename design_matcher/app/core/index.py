@@ -211,6 +211,50 @@ class CatalogIndex:
 
         return res_scores, res_indices
 
+    def index_catalog_optimized(
+        self,
+        root_dir: Path | str,
+        dpi: int = 200,
+        include_subregions: bool = True,
+        run_ocr: bool = True,
+        mode: str = "full",
+        progress_cb: Optional[Callable[[IndexProgress], None]] = None,
+        cancel_check: Optional[Callable[[], bool]] = None,
+        force_reindex: bool = False,
+        max_workers: Optional[int] = None,
+    ) -> int:
+        """
+        Executes the high-performance two-stage indexing pipeline (Stage A metadata,
+        Stage B visual features, Stage C zero-overhead incremental scanning).
+        """
+        from app.core.indexing_engine import TwoStageIndexingEngine, TwoStageProgress
+
+        engine = TwoStageIndexingEngine(self, max_workers=max_workers)
+
+        def bridge_cb(prog: TwoStageProgress) -> None:
+            if progress_cb:
+                progress_cb(IndexProgress(
+                    phase=prog.phase,
+                    current_file_idx=prog.current_item,
+                    total_files=prog.total_items,
+                    current_pdf_path=prog.current_file,
+                    total_tiles_indexed=prog.total_tiles_indexed,
+                    message=prog.message,
+                    percent=prog.percent,
+                ))
+
+        summary = engine.run_two_stage_index(
+            root_dir=root_dir,
+            dpi=dpi,
+            include_subregions=include_subregions,
+            run_ocr=run_ocr,
+            mode=mode,
+            progress_cb=bridge_cb,
+            cancel_check=cancel_check,
+            force_reindex=force_reindex,
+        )
+        return int(summary.get("tiles_generated", 0))
+
     def index_catalog(
         self,
         root_dir: Path | str,
@@ -222,20 +266,31 @@ class CatalogIndex:
         force_reindex: bool = False,
     ) -> int:
         """
-        Recursively indexes all PDF catalogs found under root_dir.
-        Performs incremental indexing by hashing files and skipping unchanged ones.
+        Production indexing entrypoint using the optimized two-stage engine.
+        """
+        return self.index_catalog_optimized(
+            root_dir=root_dir,
+            dpi=dpi,
+            include_subregions=include_subregions,
+            run_ocr=run_ocr,
+            mode="full",
+            progress_cb=progress_cb,
+            cancel_check=cancel_check,
+            force_reindex=force_reindex,
+        )
 
-        Args:
-            root_dir: Root directory to search for PDFs.
-            dpi: Rendering DPI for catalog pages (~200 DPI recommended).
-            include_subregions: Whether to generate overlapping sub-region crops.
-            run_ocr: Whether to run OCR on design numbers under tiles.
-            progress_cb: Optional callback for reporting progress.
-            cancel_check: Optional callable returning True if indexing should abort.
-            force_reindex: If True, re-indexes even unchanged files.
-
-        Returns:
-            Total number of newly indexed tiles.
+    def index_catalog_legacy(
+        self,
+        root_dir: Path | str,
+        dpi: int = 200,
+        include_subregions: bool = True,
+        run_ocr: bool = True,
+        progress_cb: Optional[Callable[[IndexProgress], None]] = None,
+        cancel_check: Optional[Callable[[], bool]] = None,
+        force_reindex: bool = False,
+    ) -> int:
+        """
+        Legacy sequential catalog indexing implementation (for regression benchmarking).
         """
         root_path = Path(root_dir).resolve()
         if not root_path.is_dir():

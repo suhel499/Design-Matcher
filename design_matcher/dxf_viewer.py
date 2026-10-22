@@ -220,6 +220,10 @@ class ParsedDxfData:
         self.vector_items: List[Tuple[QPainterPath, str, QColor]] = []
         self.text_items: List[Tuple[str, float, float, float, float, str, QColor]] = []
 
+        # Raster preview for DWG or rendered drawings
+        self.raster_image: Optional[Any] = None
+        self.raster_pixmap: Optional[QPixmap] = None
+
     @property
     def total_entities(self) -> int:
         return self.total_entity_count
@@ -324,6 +328,7 @@ def parse_dxf_document(doc: ezdxf.document.Drawing, path: Optional[Path | str] =
 
     min_x, min_y = float("inf"), float("inf")
     max_x, max_y = float("-inf"), float("-inf")
+    entity_boxes: List[Tuple[float, float, float, float]] = []
 
     def _process_entity(ent: Any, depth: int = 0) -> None:
         nonlocal min_x, min_y, max_x, max_y
@@ -345,6 +350,37 @@ def parse_dxf_document(doc: ezdxf.document.Drawing, path: Optional[Path | str] =
                 logger.debug("Virtual entities error on %s: %s", ent, sub_exc)
             return
 
+        if dxftype == "POINT":
+            try:
+                loc = getattr(ent.dxf, "location", (0.0, 0.0, 0.0))
+                px = float(loc[0])
+                py = float(loc[1])
+                c_idx = getattr(ent.dxf, "color", 256)
+                tc = getattr(ent.dxf, "true_color", None)
+                lc_info = layer_colors_map.get(layer_name, (7, None))
+                qcol = resolve_dxf_color(c_idx, tc, lc_info[0], lc_info[1], is_dark_mode=True)
+
+                # Crosshair point marker ('+' symbol) with thin cosmetic outline
+                arm = 2.0  # Crosshair arm length in drawing units
+                qpath = QPainterPath()
+                qpath.moveTo(px - arm, py)
+                qpath.lineTo(px + arm, py)
+                qpath.moveTo(px, py - arm)
+                qpath.lineTo(px, py + arm)
+
+                data.vector_items.append((qpath, layer_name, qcol))
+                if layer_name in data.layers:
+                    data.layers[layer_name].entity_count += 1
+
+                min_x = min(min_x, px - arm)
+                min_y = min(min_y, py - arm)
+                max_x = max(max_x, px + arm)
+                max_y = max(max_y, py + arm)
+                entity_boxes.append((px - arm, py - arm, px + arm, py + arm))
+            except Exception as pt_exc:
+                logger.debug("Failed converting POINT entity: %s", pt_exc)
+            return
+
         if dxftype in ("TEXT", "MTEXT"):
             try:
                 ins = getattr(ent.dxf, "insert", (0.0, 0.0, 0.0))
@@ -364,76 +400,125 @@ def parse_dxf_document(doc: ezdxf.document.Drawing, path: Optional[Path | str] =
                     lc_info = layer_colors_map.get(layer_name, (7, None))
                     qcol = resolve_dxf_color(c_idx, tc, lc_info[0], lc_info[1], is_dark_mode=True)
                     data.text_items.append((raw_t.strip(), tx, ty, th, trot, layer_name, qcol))
+                    t_w = len(raw_t) * th * 0.7
                     min_x = min(min_x, tx)
                     min_y = min(min_y, ty)
-                    max_x = max(max_x, tx + len(raw_t) * th * 0.7)
+                    max_x = max(max_x, tx + t_w)
                     max_y = max(max_y, ty + th)
+                    entity_boxes.append((tx, ty, tx + t_w, ty + th))
             except Exception as text_exc:
                 logger.debug("Text extraction warning: %s", text_exc)
             return
 
-        # Geometry entities: convert via ezdxf.path.make_path
+        # Geometry entities: convert via ezdxf.path.make_path with curve flattening fallback
         try:
             p = ez_path.make_path(ent)
-            if len(p) == 0:
+            if len(p) > 0:
+                qpath = QPainterPath()
+                qpath.moveTo(p.start.x, p.start.y)
+
+                for cmd in p:
+                    if isinstance(cmd, ez_path.Curve4To):
+                        qpath.cubicTo(cmd.ctrl1.x, cmd.ctrl1.y, cmd.ctrl2.x, cmd.ctrl2.y, cmd.end.x, cmd.end.y)
+                    elif isinstance(cmd, ez_path.Curve3To):
+                        qpath.quadTo(cmd.ctrl.x, cmd.ctrl.y, cmd.end.x, cmd.end.y)
+                    elif isinstance(cmd, ez_path.LineTo):
+                        qpath.lineTo(cmd.end.x, cmd.end.y)
+                    elif isinstance(cmd, ez_path.MoveTo):
+                        qpath.moveTo(cmd.end.x, cmd.end.y)
+
+                if getattr(p, "is_closed", False):
+                    qpath.closeSubpath()
+
+                c_idx = getattr(ent.dxf, "color", 256)
+                tc = getattr(ent.dxf, "true_color", None)
+                lc_info = layer_colors_map.get(layer_name, (7, None))
+                qcol = resolve_dxf_color(c_idx, tc, lc_info[0], lc_info[1], is_dark_mode=True)
+
+                data.vector_items.append((qpath, layer_name, qcol))
+                if layer_name in data.layers:
+                    data.layers[layer_name].entity_count += 1
+
+                br = qpath.boundingRect()
+                if not br.isNull() and (br.width() > 0 or br.height() > 0):
+                    entity_boxes.append((br.left(), br.top(), br.right(), br.bottom()))
+                    min_x = min(min_x, br.left())
+                    min_y = min(min_y, br.top())
+                    max_x = max(max_x, br.right())
+                    max_y = max(max_y, br.bottom())
                 return
-
-            qpath = QPainterPath()
-            qpath.moveTo(p.start.x, p.start.y)
-            min_x = min(min_x, p.start.x)
-            min_y = min(min_y, p.start.y)
-            max_x = max(max_x, p.start.x)
-            max_y = max(max_y, p.start.y)
-
-            for cmd in p:
-                if isinstance(cmd, ez_path.Curve4To):
-                    qpath.cubicTo(cmd.ctrl1.x, cmd.ctrl1.y, cmd.ctrl2.x, cmd.ctrl2.y, cmd.end.x, cmd.end.y)
-                    min_x = min(min_x, cmd.end.x)
-                    min_y = min(min_y, cmd.end.y)
-                    max_x = max(max_x, cmd.end.x)
-                    max_y = max(max_y, cmd.end.y)
-                elif isinstance(cmd, ez_path.Curve3To):
-                    qpath.quadTo(cmd.ctrl.x, cmd.ctrl.y, cmd.end.x, cmd.end.y)
-                    min_x = min(min_x, cmd.end.x)
-                    min_y = min(min_y, cmd.end.y)
-                    max_x = max(max_x, cmd.end.x)
-                    max_y = max(max_y, cmd.end.y)
-                elif isinstance(cmd, ez_path.LineTo):
-                    qpath.lineTo(cmd.end.x, cmd.end.y)
-                    min_x = min(min_x, cmd.end.x)
-                    min_y = min(min_y, cmd.end.y)
-                    max_x = max(max_x, cmd.end.x)
-                    max_y = max(max_y, cmd.end.y)
-                elif isinstance(cmd, ez_path.MoveTo):
-                    qpath.moveTo(cmd.end.x, cmd.end.y)
-
-            if getattr(p, "is_closed", False):
-                qpath.closeSubpath()
-
-            c_idx = getattr(ent.dxf, "color", 256)
-            tc = getattr(ent.dxf, "true_color", None)
-            lc_info = layer_colors_map.get(layer_name, (7, None))
-            qcol = resolve_dxf_color(c_idx, tc, lc_info[0], lc_info[1], is_dark_mode=True)
-
-            data.vector_items.append((qpath, layer_name, qcol))
-
-            if layer_name in data.layers:
-                data.layers[layer_name].entity_count += 1
         except Exception as geom_exc:
-            logger.debug("Failed converting entity %s to path: %s", dxftype, geom_exc)
+            logger.debug("make_path failed on %s: %s, attempting flattening", dxftype, geom_exc)
+
+        # Fallback: curve/spline flattening with fine tolerance (0.01 drawing units)
+        try:
+            if hasattr(ent, "flattening"):
+                pts = list(ent.flattening(distance=0.01))
+                if len(pts) >= 2:
+                    qpath = QPainterPath()
+                    qpath.moveTo(pts[0].x, pts[0].y)
+                    for pt in pts[1:]:
+                        qpath.lineTo(pt.x, pt.y)
+
+                    c_idx = getattr(ent.dxf, "color", 256)
+                    tc = getattr(ent.dxf, "true_color", None)
+                    lc_info = layer_colors_map.get(layer_name, (7, None))
+                    qcol = resolve_dxf_color(c_idx, tc, lc_info[0], lc_info[1], is_dark_mode=True)
+
+                    data.vector_items.append((qpath, layer_name, qcol))
+                    if layer_name in data.layers:
+                        data.layers[layer_name].entity_count += 1
+
+                    br = qpath.boundingRect()
+                    if not br.isNull() and (br.width() > 0 or br.height() > 0):
+                        entity_boxes.append((br.left(), br.top(), br.right(), br.bottom()))
+                        min_x = min(min_x, br.left())
+                        min_y = min(min_y, br.top())
+                        max_x = max(max_x, br.right())
+                        max_y = max(max_y, br.bottom())
+        except Exception as flat_exc:
+            logger.debug("Flattening fallback failed on %s: %s", dxftype, flat_exc)
 
     for ent in all_entities:
         _process_entity(ent, 0)
 
-    if min_x <= max_x and min_y <= max_y:
-        data.drawing_bounds = (min_x, min_y, max_x - min_x, max_y - min_y)
+    # Compute bounding box with outlier rejection to avoid stray far-away points/empty paper space
+    if entity_boxes:
+        if len(entity_boxes) >= 8:
+            centers_x = sorted((b[0] + b[2]) * 0.5 for b in entity_boxes)
+            centers_y = sorted((b[1] + b[3]) * 0.5 for b in entity_boxes)
+            n = len(entity_boxes)
+            q1_x, q3_x = centers_x[n // 4], centers_x[(3 * n) // 4]
+            iqr_x = max(q3_x - q1_x, 1e-4)
+            q1_y, q3_y = centers_y[n // 4], centers_y[(3 * n) // 4]
+            iqr_y = max(q3_y - q1_y, 1e-4)
+
+            low_x, high_x = q1_x - 4.0 * iqr_x, q3_x + 4.0 * iqr_x
+            low_y, high_y = q1_y - 4.0 * iqr_y, q3_y + 4.0 * iqr_y
+
+            valid_boxes = [
+                b for b in entity_boxes
+                if low_x <= (b[0] + b[2]) * 0.5 <= high_x and low_y <= (b[1] + b[3]) * 0.5 <= high_y
+            ]
+            if not valid_boxes:
+                valid_boxes = entity_boxes
+        else:
+            valid_boxes = entity_boxes
+
+        bx = min(b[0] for b in valid_boxes)
+        by = min(b[1] for b in valid_boxes)
+        mx = max(b[2] for b in valid_boxes)
+        my = max(b[3] for b in valid_boxes)
+        data.drawing_bounds = (bx, by, max(mx - bx, 1.0), max(my - by, 1.0))
+    elif min_x <= max_x and min_y <= max_y:
+        data.drawing_bounds = (min_x, min_y, max(max_x - min_x, 1.0), max(max_y - min_y, 1.0))
     elif data.designs:
         # Fall back to union of designs
         all_bx = min(d.x for d in data.designs)
         all_by = min(d.y for d in data.designs)
         all_mx = max(d.x + d.width for d in data.designs)
         all_my = max(d.y + d.height for d in data.designs)
-        data.drawing_bounds = (all_bx, all_by, all_mx - all_bx, all_my - all_by)
+        data.drawing_bounds = (all_bx, all_by, max(all_mx - all_bx, 1.0), max(all_my - all_by, 1.0))
     else:
         data.drawing_bounds = (0.0, 0.0, 100.0, 100.0)
 
@@ -480,11 +565,78 @@ class DxfLoaderWorker(QThread):
             return
 
         if self.path.suffix.lower() == ".dwg":
-            self.error_signal.emit(
-                f"DWG format is not directly supported for '{self.path.name}'.",
-                "Please open this drawing in AutoCAD or DWG TrueView and export/save it as DXF format.",
-            )
-            return
+            try:
+                import cv2
+                from app.core.dwg_reader import (
+                    convert_dwg_to_dxf,
+                    get_dwg_version,
+                    read_dwg_preview,
+                    generate_dwg_cad_card,
+                )
+                ver_code, ver_name = get_dwg_version(self.path)
+
+                # 1. PRIMARY: Convert to vector DXF for full CAD rendering (Screenshot 3 quality)
+                converted_dxf = convert_dwg_to_dxf(self.path)
+                if converted_dxf is not None and converted_dxf.is_file():
+                    try:
+                        doc = load_dxf(converted_dxf)
+                        parsed = parse_dxf_document(doc, self.path)
+                        parsed.dxf_version_code = ver_code or parsed.dxf_version_code
+                        parsed.dxf_version_name = f"DWG ({ver_name})"
+                        GLOBAL_DXF_CACHE.put(self.path, parsed)
+                        self.loaded_signal.emit(parsed)
+                        return
+                    except Exception as d_exc:
+                        logger.warning("Failed parsing converted DXF from DWG '%s': %s", self.path.name, d_exc)
+
+                # 2. SECONDARY: High-resolution raster preview
+                preview_bgr = read_dwg_preview(self.path, prefer_high_res=True)
+                if preview_bgr is None:
+                    preview_bgr = generate_dwg_cad_card(self.path, ver_name)
+
+                parsed = ParsedDxfData(self.path)
+                parsed.file_size_bytes = self.path.stat().st_size
+                parsed.dxf_version_code = ver_code
+                parsed.dxf_version_name = f"DWG ({ver_name})"
+                parsed.units_name = "AutoCAD Units"
+                parsed.units_suffix = "units"
+                h, w = preview_bgr.shape[:2]
+                parsed.drawing_bounds = (0.0, 0.0, float(w), float(h))
+                parsed.raster_image = preview_bgr
+
+                rgb = cv2.cvtColor(preview_bgr, cv2.COLOR_BGR2RGB)
+                qimg = QImage(rgb.data, w, h, w * 3, QImage.Format.Format_RGB888)
+                parsed.raster_pixmap = QPixmap.fromImage(qimg.copy())
+
+                l_info = LayerInfo(
+                    name="DWG_PREVIEW",
+                    color=QColor(255, 255, 255),
+                    is_on=True,
+                )
+                l_info.entity_count = 1
+                parsed.layers["DWG_PREVIEW"] = l_info
+                parsed.total_entity_count = 1
+
+                parsed.designs = [
+                    Design(
+                        design_id=f"{self.path.stem}_full",
+                        design_code=self.path.stem,
+                        bbox=(0.0, 0.0, float(w), float(h)),
+                        source_path=str(self.path),
+                        entity_count=1,
+                    )
+                ]
+
+                GLOBAL_DXF_CACHE.put(self.path, parsed)
+                self.loaded_signal.emit(parsed)
+                return
+            except Exception as dwg_exc:
+                logger.exception("Error loading DWG preview for %s: %s", self.path.name, dwg_exc)
+                self.error_signal.emit(
+                    f"Failed to open DWG file '{self.path.name}'.",
+                    str(dwg_exc),
+                )
+                return
 
         try:
             doc = load_dxf(self.path)
@@ -622,6 +774,17 @@ class DxfScene(QGraphicsScene):
             titem.setBrush(QBrush(qcol))
             self.addItem(titem)
             self.layer_items.setdefault(lname, []).append(titem)
+
+        # 2b. Add raster preview item if present (e.g. from DWG drawing)
+        if getattr(data, "raster_pixmap", None) is not None:
+            pix_item = self.addPixmap(data.raster_pixmap)
+            pix_item.setTransformationMode(Qt.TransformationMode.SmoothTransformation)
+            bx, by, bw, bh = data.drawing_bounds
+            t = QTransform()
+            t.translate(0, bh)
+            t.scale(1.0, -1.0)
+            pix_item.setTransform(t)
+            self.layer_items.setdefault("DWG_PREVIEW", []).append(pix_item)
 
         # 3. Add selectable design panels
         for idx, d in enumerate(data.designs):
@@ -779,7 +942,17 @@ class DxfView(QGraphicsView):
         self._measure_p2 = pt
 
     def zoom_to_fit(self) -> None:
-        """Fits the entire drawing scene into view."""
+        """Fits the entire drawing scene into view using cleaned visible geometry extents."""
+        if self.dxf_scene.parsed_data is not None:
+            bx, by, bw, bh = self.dxf_scene.parsed_data.drawing_bounds
+            if bw > 0 and bh > 0:
+                margin = max(bw, bh) * 0.05
+                target = QRectF(bx - margin, by - margin, bw + 2 * margin, bh + 2 * margin)
+                self.fitInView(target, Qt.AspectRatioMode.KeepAspectRatio)
+                self._maintain_flipped_y()
+                self._emit_current_zoom()
+                return
+
         rect = self.scene().itemsBoundingRect()
         if not rect.isEmpty() and rect.width() > 0 and rect.height() > 0:
             margin = max(rect.width(), rect.height()) * 0.05
@@ -828,9 +1001,14 @@ class DxfView(QGraphicsView):
         self.scale(1.0, -1.0)
         self._emit_current_zoom()
 
-    def export_image(self, file_path: str | Path, width: int = 2400, background_color: Optional[QColor] = None) -> bool:
-        """Renders the entire drawing scene to high-resolution PNG image with upright CAD orientation."""
-        rect = self.dxf_scene.itemsBoundingRect()
+    def export_image(self, file_path: str | Path, width: int = 3200, background_color: Optional[QColor] = None) -> bool:
+        """Renders the entire drawing scene to high-resolution PNG image (min 3200px on long side) with upright CAD orientation."""
+        if self.dxf_scene.parsed_data is not None:
+            bx, by, bw, bh = self.dxf_scene.parsed_data.drawing_bounds
+            rect = QRectF(bx, by, bw, bh)
+        else:
+            rect = self.dxf_scene.itemsBoundingRect()
+
         if rect.isEmpty() or rect.width() <= 0 or rect.height() <= 0:
             return False
 
@@ -839,9 +1017,11 @@ class DxfView(QGraphicsView):
         pad_y = max(1.0, rect.height() * 0.015)
         padded_rect = rect.adjusted(-pad_x, -pad_y, pad_x, pad_y)
 
+        img_width = max(10, width)
         aspect = padded_rect.height() / padded_rect.width()
-        height = max(100, int(width * aspect))
-        img = QImage(width, height, QImage.Format.Format_ARGB32_Premultiplied)
+        height = max(10, int(img_width * aspect))
+
+        img = QImage(img_width, height, QImage.Format.Format_ARGB32_Premultiplied)
         bg = background_color or self.dxf_scene.backgroundBrush().color()
         if not bg.isValid() or bg.alpha() == 0:
             bg = DEFAULT_DARK_BG if self.dxf_scene.is_dark_mode else DEFAULT_LIGHT_BG
@@ -857,7 +1037,7 @@ class DxfView(QGraphicsView):
         painter.scale(1.0, -1.0)
 
         # Render the graphics scene into the high-res image
-        self.dxf_scene.render(painter, QRectF(0, 0, width, height), padded_rect)
+        self.dxf_scene.render(painter, QRectF(0, 0, img_width, height), padded_rect)
         painter.end()
 
         # Note: PySide6 type stubs incorrectly annotate QImage.save's format as bytes | None,
@@ -1764,7 +1944,7 @@ class DxfFolderExplorerWidget(QWidget):
 
         # 4. Search / Filter Input
         self.search_input = QLineEdit(self)
-        self.search_input.setPlaceholderText("🔍 Filter DXF files...")
+        self.search_input.setPlaceholderText("🔍 Filter DXF & DWG files...")
         self.search_input.setClearButtonEnabled(True)
         self.search_input.setStyleSheet(
             "QLineEdit { background: #0F172A; color: #F8FAFC; border: 1px solid #334155; border-radius: 4px; padding: 4px 8px; font-size: 11px; } "
@@ -1787,7 +1967,7 @@ class DxfFolderExplorerWidget(QWidget):
         opts_row.addWidget(self.count_label)
         layout.addLayout(opts_row)
 
-        # 6. DXF Files List
+        # 6. CAD Files List (DXF & DWG)
         self.file_list = QListWidget(self)
         self.file_list.setStyleSheet(
             "QListWidget { background: #0F172A; color: #F8FAFC; border: 1px solid #334155; border-radius: 6px; font-size: 11px; } "
@@ -1801,7 +1981,7 @@ class DxfFolderExplorerWidget(QWidget):
 
     def _browse_folder_dialog(self) -> None:
         start_dir = str(self.current_folder) if self.current_folder.is_dir() else str(Path.home())
-        chosen = QFileDialog.getExistingDirectory(self, "Select Folder Containing DXF CAD Files", start_dir)
+        chosen = QFileDialog.getExistingDirectory(self, "Select Folder Containing DXF / DWG CAD Files", start_dir)
         if chosen and Path(chosen).is_dir():
             self.set_folder(Path(chosen))
 
@@ -1818,22 +1998,23 @@ class DxfFolderExplorerWidget(QWidget):
         self.path_label.setText(f"📂 {p.name}")
         self.path_label.setToolTip(str(p))
 
-        # Scan for DXF files
-        dxf_files: List[Path] = []
+        # Scan for DXF and DWG files
+        cad_files: List[Path] = []
         try:
+            cad_exts = ("*.dxf", "*.DXF", "*.dwg", "*.DWG")
             if self.chk_recursive.isChecked():
-                for ext in ("*.dxf", "*.DXF"):
-                    dxf_files.extend(list(p.rglob(ext)))
+                for ext in cad_exts:
+                    cad_files.extend(list(p.rglob(ext)))
             else:
-                for ext in ("*.dxf", "*.DXF"):
-                    dxf_files.extend(list(p.glob(ext)))
+                for ext in cad_exts:
+                    cad_files.extend(list(p.glob(ext)))
         except Exception as exc:
-            logger.warning("Error scanning DXF folder %s: %s", p, exc)
+            logger.warning("Error scanning CAD folder %s: %s", p, exc)
 
         # Deduplicate & sort by name
         seen = set()
         unique_files: List[Path] = []
-        for f in dxf_files:
+        for f in cad_files:
             rp = f.resolve()
             if rp not in seen and f.is_file():
                 seen.add(rp)
@@ -1858,15 +2039,17 @@ class DxfFolderExplorerWidget(QWidget):
                 sz_str = "0 KB"
                 mtime = ""
 
-            item_text = f"📐 {f.name}\n   {sz_str}  •  {mtime}"
+            icon = "📐" if f.suffix.lower() == ".dxf" else "🏗️"
+            badge = f.suffix.upper().replace(".", "")
+            item_text = f"{icon} [{badge}] {f.name}\n   {sz_str}  •  {mtime}"
             item = QListWidgetItem(item_text)
             item.setData(Qt.ItemDataRole.UserRole, f)
-            item.setToolTip(f"{f.name}\nPath: {f}\nSize: {sz_str}")
+            item.setToolTip(f"{f.name} ({badge})\nPath: {f}\nSize: {sz_str}")
             self.file_list.addItem(item)
 
-        self.count_label.setText(f"{len(matched)} of {len(self._all_dxf_files)} DXF file(s)")
+        self.count_label.setText(f"{len(matched)} of {len(self._all_dxf_files)} CAD file(s)")
         if not matched:
-            empty_item = QListWidgetItem("No DXF files found in folder.\nClick 'Browse Folder' to select CAD directory.")
+            empty_item = QListWidgetItem("No DXF or DWG files found in folder.\nClick 'Browse Folder' to select CAD directory.")
             empty_item.setFlags(Qt.ItemFlag.NoItemFlags)
             empty_item.setForeground(QBrush(QColor("#64748B")))
             self.file_list.addItem(empty_item)

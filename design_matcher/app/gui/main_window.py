@@ -54,6 +54,7 @@ from app.gui.pages import (
     TermsConditionsPage,
     UpdatesPage,
 )
+from app.gui.catalog_library import CatalogLibraryPage
 from app.core.image_crop import warp_four_points
 from app.core.index import CatalogIndex, get_default_data_dir
 from app.core.preprocess import (
@@ -643,6 +644,9 @@ class MainWindow(QMainWindow):
             "QMenu::item { padding: 6px 20px; border-radius: 4px; } "
             "QMenu::item:selected { background: #2563EB; color: white; }"
         )
+        act_lib = self.more_menu.addAction("📚 Catalog Library")
+        act_lib.triggered.connect(lambda: self.open_page(12))
+        self.more_menu.addSeparator()
         act_cnt = self.more_menu.addAction("📞 Contact Us & Support")
         act_cnt.triggered.connect(lambda: self.open_page(9))
         act_abt = self.more_menu.addAction("ℹ️ About Us & Specifications")
@@ -1094,6 +1098,16 @@ class MainWindow(QMainWindow):
         self.terms_page.back_requested.connect(lambda: self.open_page(0))
         self.main_stack.addWidget(self.terms_page)
 
+        # Page 12: Catalog Library (fast indexed tile gallery)
+        self.catalog_library_page = CatalogLibraryPage(
+            catalog_index=self.catalog_index,
+            dxf_db=self.dxf_db,
+            parent=self.main_stack,
+        )
+        self.catalog_library_page.back_requested.connect(lambda: self.open_page(0))
+        self.catalog_library_page.tile_selected.connect(self._on_library_tile_selected)
+        self.main_stack.addWidget(self.catalog_library_page)
+
         # Connect live theme switching from Settings Page
         self.settings_page.theme_changed.connect(lambda mode: self.apply_theme(mode.lower() != "light"))
 
@@ -1146,6 +1160,82 @@ class MainWindow(QMainWindow):
 
         if self.search_mode != "mode_b":
             self._set_search_mode("mode_b")
+
+        if p.suffix.lower() == ".dwg":
+            try:
+                import cv2
+                from app.core.dwg_reader import convert_dwg_to_dxf, read_dwg_preview, get_dwg_version, generate_dwg_cad_card
+                from app.core.preprocess import letterbox_image
+                ver_code, ver_name = get_dwg_version(p)
+
+                converted_dxf = convert_dwg_to_dxf(p)
+                if converted_dxf is not None and converted_dxf.is_file():
+                    p_to_parse = converted_dxf
+                    self.status_bar.showMessage(f"Parsing converted vector CAD: {p.name}...")
+                    parsed = parse_dxf_drawing(p_to_parse)
+                    self.reference_dxf_path = str(p)
+                    self.reference_dxf_components = parsed.components
+                    self.reference_selected_comp_idx = 0
+
+                    self.ref_comp_combo.blockSignals(True)
+                    self.ref_comp_combo.clear()
+                    for comp in parsed.components:
+                        self.ref_comp_combo.addItem(f"{comp.name} ({comp.entity_count} entities)")
+                    self.ref_comp_combo.setCurrentIndex(0)
+                    self.ref_comp_combo.blockSignals(False)
+                    self.ref_comp_container.setVisible(len(parsed.components) > 1)
+
+                    if parsed.components:
+                        norm_comp = normalize_dxf_component(parsed.components[0])
+                        self.current_mask = norm_comp.canonical_mask
+                        self.polarity_badge.setText(f"DWG Vector ({ver_name})")
+                        self.polarity_badge.setStyleSheet(
+                            "background: #EDE9FE; color: #6D28D9; border: 1px solid #DDD6FE; "
+                            "font-size: 10px; font-weight: 600; padding: 2px 6px; border-radius: 4px;"
+                        )
+                        self._display_mask_preview()
+
+                    self.clear_btn.setEnabled(True)
+                    self.search_btn.setEnabled(True)
+                    self.search_btn.setText("SEARCH CAD LIBRARY (FROM REFERENCE DWG)")
+                    self.status_bar.showMessage(
+                        f"Reference DWG ready: {p.name} ({len(parsed.components)} panel(s), {parsed.total_entity_count} entities)."
+                    )
+                    return
+
+                # Raster preview fallback
+                preview_bgr = read_dwg_preview(p, prefer_high_res=True)
+                if preview_bgr is None:
+                    preview_bgr = generate_dwg_cad_card(p, ver_name)
+
+                self.reference_dxf_path = str(p)
+                self.reference_dxf_components = []
+                self.reference_selected_comp_idx = 0
+                self.ref_comp_container.setVisible(False)
+
+                gray = cv2.cvtColor(preview_bgr, cv2.COLOR_BGR2GRAY) if preview_bgr.ndim == 3 else preview_bgr
+                from dxf_ingest import convert_line_art_to_stencil_mask
+                m_std, _ = convert_line_art_to_stencil_mask(gray, has_explicit_border=True)
+                self.current_mask = letterbox_image(m_std, target_size=(224, 224), pad_value=0)
+
+                self.polarity_badge.setText(f"DWG ({ver_name})")
+                self.polarity_badge.setStyleSheet(
+                    "background: #EDE9FE; color: #6D28D9; border: 1px solid #DDD6FE; "
+                    "font-size: 10px; font-weight: 600; padding: 2px 6px; border-radius: 4px;"
+                )
+                self._display_mask_preview()
+
+                self.clear_btn.setEnabled(True)
+                self.search_btn.setEnabled(True)
+                self.search_btn.setText("SEARCH CAD LIBRARY (FROM REFERENCE DWG)")
+                self.status_bar.showMessage(f"Reference DWG ready: {p.name} ({ver_name}).")
+                return
+            except Exception as dwg_err:
+                logger.exception("Error loading reference DWG: %s", dwg_err)
+                if os.environ.get("QT_QPA_PLATFORM") != "offscreen":
+                    QMessageBox.warning(self, "Invalid DWG File", f"Unable to parse DWG CAD file:\n\n{dwg_err}")
+                self.status_bar.showMessage(f"DWG parse error: {dwg_err}")
+                return
 
         self.status_bar.showMessage(f"Parsing reference DXF: {p.name}...")
         try:
@@ -1962,6 +2052,8 @@ class MainWindow(QMainWindow):
             self.license_page.apply_theme(self.is_dark)
         elif tab_id == 4:
             self.settings_page._load_values()
+        elif tab_id == 12:
+            self.catalog_library_page.refresh()
 
         if 0 <= tab_id < self.main_stack.count():
             self.main_stack.setCurrentIndex(tab_id)
@@ -2443,8 +2535,42 @@ class MainWindow(QMainWindow):
         self.open_page(0)
         self.status_bar.showMessage("Agreement accepted. Welcome to Design Matcher!", 5000)
 
+    def _on_library_tile_selected(self, tile: dict) -> None:
+        """
+        Handles a tile card click from CatalogLibraryPage.
+        - DXF tiles: opens in the DXF Preview tab, framing the matched design bbox.
+        - PDF tiles: no-op for now (could open PDF viewer in future).
+        """
+        src = str(tile.get("source_type", "pdf")).lower()
+        pdf_path = tile.get("pdf_path", "")
+        if (src in ("dxf", "dwg") or str(pdf_path).lower().endswith((".dxf", ".dwg"))) and pdf_path:
+            dxf_bbox = tile.get("dxf_bbox")
+            d_code = tile.get("design_code") or tile.get("design_number") or ""
+            try:
+                import json as _json
+                if isinstance(dxf_bbox, str):
+                    dxf_bbox = _json.loads(dxf_bbox)
+            except Exception:
+                dxf_bbox = None
+            matched_bbox = tuple(dxf_bbox) if isinstance(dxf_bbox, (list, tuple)) and len(dxf_bbox) == 4 else None
+            self.switch_to_dxf_preview(
+                dxf_path=pdf_path,
+                matched_bbox=matched_bbox,  # type: ignore[arg-type]
+                matched_code=d_code,
+            )
+        else:
+            # PDF tile selected – show a status message
+            d_code = tile.get("design_code") or tile.get("design_number") or "?"
+            page = tile.get("page_number", "?")
+            import os as _os
+            fname = _os.path.basename(pdf_path)
+            self.status_bar.showMessage(
+                f"Selected: {fname} — Page {page} — Design {d_code}", 4000
+            )
+
     def _on_data_reset(self) -> None:
         """Handles full factory reset or catalog index purge from BackupPage."""
+
         self.update_catalog_stats()
         self.results_count_label.setText("0 matches")
         while self.results_layout.count():
@@ -2471,23 +2597,23 @@ class MainWindow(QMainWindow):
             self._search_by_design_code()
         elif Path(query_text).is_file():
             self._load_photo(query_text)
-            if query_text.lower().endswith(".dxf"):
+            if query_text.lower().endswith((".dxf", ".dwg")):
                 self._start_search()
 
     def _select_photo_file(self) -> None:
         """Prompts user to select customer photo or CAD drawing file."""
         file_path, _ = QFileDialog.getOpenFileName(
             self,
-            "Select Customer Photo or DXF Design",
+            "Select Customer Photo or CAD Design (DXF / DWG)",
             "",
-            "Supported Files (*.jpg *.jpeg *.png *.bmp *.webp *.dxf);;Images (*.jpg *.jpeg *.png *.bmp *.webp);;DXF Files (*.dxf);;All Files (*.*)",
+            "Supported CAD & Image Files (*.dxf *.dwg *.jpg *.jpeg *.png *.bmp *.webp);;CAD Files (*.dxf *.dwg);;DXF Files (*.dxf);;DWG Files (*.dwg);;Images (*.jpg *.jpeg *.png *.bmp *.webp);;All Files (*.*)",
         )
         if file_path:
             self._load_photo(file_path)
 
     def _load_photo(self, path: str) -> None:
         """Loads and normalizes an image file into the drop area."""
-        if path.lower().endswith(".dxf"):
+        if path.lower().endswith((".dxf", ".dwg")):
             self._load_reference_dxf(path)
             return
         bgr = cv2.imread(path)

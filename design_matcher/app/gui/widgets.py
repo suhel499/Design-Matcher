@@ -243,9 +243,9 @@ class PhotoDropArea(QFrame):
         if event.button() == Qt.MouseButton.LeftButton:
             file_path, _ = QFileDialog.getOpenFileName(
                 self,
-                "Select Customer Photo or DXF File",
+                "Select Customer Photo or CAD File (DXF / DWG)",
                 "",
-                "Images & CAD Files (*.jpg *.jpeg *.png *.webp *.bmp *.dxf);;DXF Files (*.dxf);;Image Files (*.jpg *.jpeg *.png *.webp *.bmp);;All Files (*.*)",
+                "Images & CAD Files (*.jpg *.jpeg *.png *.webp *.bmp *.dxf *.dwg);;CAD Files (*.dxf *.dwg);;DXF Files (*.dxf);;DWG Files (*.dwg);;Image Files (*.jpg *.jpeg *.png *.webp *.bmp);;All Files (*.*)",
             )
             if file_path:
                 self.load_image_from_file(file_path)
@@ -261,6 +261,21 @@ class PhotoDropArea(QFrame):
                 bgr = render_dxf_preview(p, target_size=800)
             except Exception as exc:
                 QMessageBox.warning(self, "Invalid DXF File", f"Unable to parse DXF CAD file:\n{exc}")
+                return False
+        elif p.suffix.lower() == ".dwg":
+            try:
+                from app.core.dwg_reader import convert_dwg_to_dxf, read_dwg_preview, get_dwg_version, generate_dwg_cad_card
+                from app.core.dxf_render import render_dxf_preview
+                ver_code, ver_name = get_dwg_version(p)
+                converted_dxf = convert_dwg_to_dxf(p)
+                if converted_dxf is not None and converted_dxf.is_file():
+                    bgr = render_dxf_preview(converted_dxf, target_size=800)
+                else:
+                    bgr = read_dwg_preview(p, prefer_high_res=True)
+                if bgr is None:
+                    bgr = generate_dwg_cad_card(p, ver_name)
+            except Exception as exc:
+                QMessageBox.warning(self, "Invalid DWG File", f"Unable to parse DWG CAD file:\n{exc}")
                 return False
         else:
             try:

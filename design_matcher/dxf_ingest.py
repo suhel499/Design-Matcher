@@ -176,9 +176,15 @@ def load_dxf(path: Union[str, Path]) -> ezdxf.document.Drawing:
         raise FileNotFoundError(f"CAD file not found: {p}")
 
     if p.suffix.lower() == ".dwg":
+        try:
+            from ezdxf.addons import odafc
+            if odafc.is_installed():
+                return odafc.readfile(str(p))
+        except Exception:
+            pass
         raise ValueError(
-            f"DWG format is not supported for '{p.name}'. Please open the drawing in "
-            "AutoCAD or DWG TrueView and export/save as DXF format."
+            f"Direct vector parsing for binary DWG '{p.name}' requires ODA converter. "
+            "Using visual preview pipeline instead."
         )
 
     try:
@@ -834,6 +840,65 @@ def convert_line_art_to_stencil_mask(
 # 6. Complete Ingestion Orchestrator
 # ---------------------------------------------------------------------------
 
+def process_dwg_file(
+    dwg_path: Union[str, Path],
+    px_height: int = 1024,
+    ignore_layers: Optional[Sequence[str]] = None,
+) -> List[Design]:
+    """
+    Processes binary DWG drawing into clean standardized designs and stencil masks:
+    1. Converts DWG to vector DXF via convert_dwg_to_dxf.
+    2. Runs full multi-panel extraction and high-resolution rendering.
+    3. Falls back to high-res preview rendering if vector conversion is unavailable.
+    """
+    p = Path(dwg_path).resolve()
+    try:
+        from app.core.dwg_reader import convert_dwg_to_dxf, read_dwg_preview
+
+        # 1. Primary: Vector conversion for full panel segmentation
+        converted_dxf = convert_dwg_to_dxf(p)
+        if converted_dxf is not None and converted_dxf.is_file():
+            doc = load_dxf(converted_dxf)
+            designs = extract_designs(doc, ignore_layers=ignore_layers)
+            for d in designs:
+                d.source_path = str(p)
+                gray = render_design(d, px_height=px_height)
+                m_std, m_inv = convert_line_art_to_stencil_mask(gray, has_explicit_border=d.panel_rect is not None)
+                d.rendered_image = gray
+                d.mask = m_std
+                d.mask_inverted = m_inv
+            if designs:
+                return designs
+
+        # 2. Secondary fallback: High-resolution raster preview
+        preview_bgr = read_dwg_preview(p, prefer_high_res=True)
+        if preview_bgr is None or preview_bgr.size == 0:
+            return []
+
+        h, w = preview_bgr.shape[:2]
+        scale = float(px_height) / max(1, h)
+        nw, nh = max(1, int(round(w * scale))), px_height
+        resized = cv2.resize(preview_bgr, (nw, nh), interpolation=cv2.INTER_AREA)
+        gray = cv2.cvtColor(resized, cv2.COLOR_BGR2GRAY) if resized.ndim == 3 else resized
+
+        m_std, m_inv = convert_line_art_to_stencil_mask(gray, has_explicit_border=True)
+        d = Design(
+            design_id=f"design_{p.stem}",
+            design_code=p.stem,
+            bbox=(0.0, 0.0, float(w), float(h)),
+            mask=m_std,
+            mask_inverted=m_inv,
+            index=1,
+            total_designs=1,
+        )
+        d.rendered_image = gray
+        d.source_path = str(p)
+        return [d]
+    except Exception as exc:
+        logger.warning("Error processing DWG file '%s': %s", Path(dwg_path).name, exc)
+        return []
+
+
 def process_dxf_file(
     dxf_path: Union[str, Path],
     px_height: int = 1024,
@@ -841,12 +906,15 @@ def process_dxf_file(
 ) -> List[Design]:
     """
     High-level ingestion function:
-    1. Loads DXF CAD file.
+    1. Loads DXF or DWG CAD file.
     2. Extracts all designs and labels.
     3. Renders each design cleanly.
     4. Generates both standard and inverted stencil masks.
     """
     p = Path(dxf_path).resolve()
+    if p.suffix.lower() == ".dwg":
+        return process_dwg_file(p, px_height=px_height, ignore_layers=ignore_layers)
+
     doc = load_dxf(p)
     designs = extract_designs(doc, ignore_layers=ignore_layers)
 
