@@ -66,7 +66,7 @@ datas = []
 if (project_root / "assets").exists():
     datas.append((str(project_root / "assets"), "assets"))
 
-# Package metadata required at runtime (HuggingFace transformers, tokenizers, PyTorch, Pydantic)
+# Package metadata required at runtime
 for pkg in [
     "transformers",
     "huggingface_hub",
@@ -74,6 +74,7 @@ for pkg in [
     "tokenizers",
     "torch",
     "torchvision",
+    "scipy",
     "tqdm",
     "regex",
     "requests",
@@ -82,6 +83,10 @@ for pkg in [
     "numpy",
     "pydantic",
     "pydantic_core",
+    "pypdfium2",
+    "ezdxf",
+    "PySide6",
+    "PIL",
 ]:
     datas += safe_copy_metadata(pkg)
 
@@ -92,9 +97,13 @@ for pkg in [
     "huggingface_hub",
     "safetensors",
     "torch",
+    "torchvision",
+    "scipy",
     "ezdxf",
     "shapely",
     "pydantic",
+    "PySide6",
+    "cv2",
 ]:
     datas += safe_collect_data(pkg)
 
@@ -123,6 +132,16 @@ hiddenimports = [
     "PIL.Image",
     "PIL.ImageDraw",
     "numpy",
+    # SciPy & Spatial Distance / KDTree (used in Stencil & CAD Matcher)
+    "scipy",
+    "scipy.spatial",
+    "scipy.spatial.cKDTree",
+    "scipy.spatial.distance",
+    "scipy.spatial.transform",
+    "scipy.special",
+    "scipy.optimize",
+    "scipy.ndimage",
+    "scipy.linalg",
     # DXF & CAD
     "ezdxf",
     "ezdxf.path",
@@ -144,7 +163,13 @@ hiddenimports = [
     "faiss",
     "faiss.swigfaiss",
     "torch",
+    "torch.utils",
+    "torch.utils.data",
+    "torch.nn",
+    "torch.nn.functional",
     "torchvision",
+    "torchvision.transforms",
+    "torchvision.transforms.functional",
     "transformers",
     "transformers.models",
     "transformers.models.dinov2",
@@ -173,6 +198,9 @@ hiddenimports = [
 for pkg in [
     "app",
     "engine",
+    "scipy",
+    "torch",
+    "torchvision",
     "huggingface_hub",
     "safetensors",
     "pypdfium2",
@@ -191,10 +219,33 @@ binaries = []
 binaries += collect_dynamic_libs("pypdfium2")
 binaries += collect_dynamic_libs("faiss")
 binaries += collect_dynamic_libs("shapely")
+binaries += collect_dynamic_libs("scipy")
+binaries += collect_dynamic_libs("torch")
+binaries += collect_dynamic_libs("torchvision")
 try:
     binaries += collect_dynamic_libs("cv2")
 except Exception:
     pass
+
+# On Windows, collect PyTorch native DLLs (c10.dll, torch_cpu.dll, libiomp5md.dll, etc.)
+if is_windows:
+    try:
+        import torch
+        torch_lib = Path(torch.__file__).parent / "lib"
+        if torch_lib.exists():
+            for dll in torch_lib.glob("*.dll"):
+                binaries.append((str(dll), "torch/lib"))
+                binaries.append((str(dll), "."))
+    except Exception:
+        pass
+    try:
+        import scipy
+        scipy_dir = Path(scipy.__file__).parent
+        for dll in scipy_dir.glob("**/*.dll"):
+            binaries.append((str(dll), "scipy/.libs"))
+            binaries.append((str(dll), "."))
+    except Exception:
+        pass
 
 # Collect torchvision extension libraries (_C_stable, image_stable, and .dylibs)
 try:
@@ -232,7 +283,7 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=["tkinter", "IPython", "matplotlib"],
+    excludes=["tkinter", "IPython"],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
     cipher=block_cipher,

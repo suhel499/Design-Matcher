@@ -373,10 +373,10 @@ def test_main_window_navigation_and_pages(qtbot, temp_dir):
     win = MainWindow(data_dir=temp_dir)
     qtbot.addWidget(win)
 
-    # All 12 views in main_stack:
+    # All 13 views in main_stack:
     # 0: Matcher, 1: DXF Preview, 2: EULA, 3: License, 4: Settings, 5: Help,
-    # 6: Updates, 7: Backup, 8: About, 9: Contact, 10: Privacy, 11: Terms
-    assert win.main_stack.count() == 12
+    # 6: Updates, 7: Backup, 8: About, 9: Contact, 10: Privacy, 11: Terms, 12: Catalog Library
+    assert win.main_stack.count() == 13
 
     # Navigate to Settings (page 4)
     win.open_page(4)

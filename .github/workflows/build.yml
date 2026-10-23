@@ -64,9 +64,14 @@ jobs:
 
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip setuptools wheel pyinstaller pillow pydantic pydantic-core
+          python -m pip install --upgrade pip setuptools wheel pyinstaller pillow pydantic pydantic-core scipy
           pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
           pip install -r requirements.txt
+
+      - name: Pre-cache DINOv2 model weights for offline bundling
+        shell: pwsh
+        run: |
+          python -c "from transformers import AutoImageProcessor, AutoModel; from pathlib import Path; p = Path('models/dinov2-small'); p.mkdir(parents=True, exist_ok=True); print('Downloading DINOv2 to models/dinov2-small...'); AutoImageProcessor.from_pretrained('facebook/dinov2-small').save_pretrained(p); AutoModel.from_pretrained('facebook/dinov2-small').save_pretrained(p); print('Model pre-cached successfully.')"
 
       - name: Compile application with PyInstaller
         run: pyinstaller --clean -y design_matcher.spec
@@ -132,8 +137,12 @@ jobs:
 
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip setuptools wheel pyinstaller pillow pydantic pydantic-core
+          python -m pip install --upgrade pip setuptools wheel pyinstaller pillow pydantic pydantic-core scipy
           pip install -r requirements.txt
+
+      - name: Pre-cache DINOv2 model weights for offline bundling
+        run: |
+          python3 -c "from transformers import AutoImageProcessor, AutoModel; from pathlib import Path; p = Path('models/dinov2-small'); p.mkdir(parents=True, exist_ok=True); print('Downloading DINOv2 to models/dinov2-small...'); AutoImageProcessor.from_pretrained('facebook/dinov2-small').save_pretrained(p); AutoModel.from_pretrained('facebook/dinov2-small').save_pretrained(p); print('Model pre-cached successfully.')"
 
       - name: Package macOS App & DMG
         run: |

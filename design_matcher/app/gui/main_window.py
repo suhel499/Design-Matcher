@@ -2748,7 +2748,7 @@ class MainWindow(QMainWindow):
         event.accept()
 
 
-def run_gui(data_dir: Optional[Path | str] = None) -> None:
+def run_gui(data_dir: Optional[Path | str] = None, initial_file: Optional[str] = None) -> None:
     """Launches the PySide6 desktop GUI."""
     app = QApplication.instance()
     if app is None:
@@ -2758,5 +2758,9 @@ def run_gui(data_dir: Optional[Path | str] = None) -> None:
     app.setOrganizationName("DesignMatcher")
 
     window = MainWindow(data_dir=data_dir)
+    if initial_file:
+        p = Path(initial_file)
+        if p.is_file() and p.suffix.lower() in (".dxf", ".dwg"):
+            QTimer.singleShot(300, lambda: window.switch_to_dxf_preview(str(p)))
     window.show()
     sys.exit(app.exec())

@@ -183,7 +183,7 @@ def load_dxf(path: Union[str, Path]) -> ezdxf.document.Drawing:
         except Exception:
             pass
         raise ValueError(
-            f"Direct vector parsing for binary DWG '{p.name}' requires ODA converter. "
+            f"Direct vector parsing for binary DWG '{p.name}' requires ODA converter or DXF conversion. "
             "Using visual preview pipeline instead."
         )
 
@@ -331,6 +331,31 @@ def _explode_and_categorize(
 # 3. Geometry Bounding Box & Panel Clustering
 # ---------------------------------------------------------------------------
 
+def _get_polyline_points(entity: Any) -> List[Tuple[float, float]]:
+    """Safely extracts 2D points from LWPOLYLINE or legacy POLYLINE entities."""
+    if hasattr(entity, "get_points"):
+        try:
+            return [(float(p[0]), float(p[1])) for p in entity.get_points("xy")]
+        except TypeError:
+            try:
+                return [(float(p[0]), float(p[1])) for p in entity.get_points()]
+            except Exception:
+                pass
+        except Exception:
+            pass
+    if hasattr(entity, "points"):
+        try:
+            return [(float(p.x if hasattr(p, "x") else p[0]), float(p.y if hasattr(p, "y") else p[1])) for p in entity.points()]
+        except Exception:
+            pass
+    if hasattr(entity, "vertices"):
+        try:
+            return [(float(v.dxf.location.x), float(v.dxf.location.y)) for v in entity.vertices]
+        except Exception:
+            pass
+    return []
+
+
 def _get_entity_bbox(entity: Any) -> Optional[Tuple[float, float, float, float]]:
     """Calculates (min_x, min_y, max_x, max_y) of an individual DXF entity."""
     dxftype = entity.dxftype()
@@ -349,7 +374,7 @@ def _get_entity_bbox(entity: Any) -> Optional[Tuple[float, float, float, float]]
                 max(float(s.y), float(e.y)),
             )
         elif dxftype in ("LWPOLYLINE", "POLYLINE"):
-            pts = [(float(p[0]), float(p[1])) for p in entity.get_points()]
+            pts = _get_polyline_points(entity)
             if pts:
                 xs = [p[0] for p in pts]
                 ys = [p[1] for p in pts]
@@ -379,7 +404,7 @@ def _is_closed_rectangle(
     if not is_cl:
         return False
 
-    pts = [(float(p[0]), float(p[1])) for p in entity.get_points()]
+    pts = _get_polyline_points(entity)
     if len(pts) not in (4, 5):
         return False
 

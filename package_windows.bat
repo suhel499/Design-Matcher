@@ -26,6 +26,10 @@ if errorlevel 1 (
 )
 python -m pip install --upgrade pyinstaller pillow
 
+echo [2.5/4] Pre-caching DINOv2 model weights for offline bundling...
+if not exist "models\dinov2-small\config.json" (
+    python -c "from transformers import AutoImageProcessor, AutoModel; from pathlib import Path; p = Path('models/dinov2-small'); p.mkdir(parents=True, exist_ok=True); AutoImageProcessor.from_pretrained('facebook/dinov2-small').save_pretrained(p); AutoModel.from_pretrained('facebook/dinov2-small').save_pretrained(p); print('DINOv2 model weights cached successfully.')"
+)
 
 echo [3/4] Running PyInstaller Build...
 pyinstaller --clean -y design_matcher.spec

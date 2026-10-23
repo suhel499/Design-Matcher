@@ -25,6 +25,7 @@ import ezdxf
 from ezdxf import colors as ez_colors
 from ezdxf import path as ez_path
 from PySide6.QtCore import (
+    QCoreApplication,
     QEvent,
     QPoint,
     QPointF,
@@ -77,6 +78,7 @@ from PySide6.QtWidgets import (
     QScrollArea,
     QSizePolicy,
     QSplitter,
+    QStackedWidget,
     QStatusBar,
     QStyle,
     QTableWidget,
@@ -84,10 +86,18 @@ from PySide6.QtWidgets import (
     QTabWidget,
     QToolBar,
     QToolButton,
+    QTreeWidget,
+    QTreeWidgetItem,
     QVBoxLayout,
     QWidget,
 )
 
+from app.core.file_scanner import (
+    build_tree_hierarchy,
+    build_unique_display_labels,
+    natural_sort_key,
+    scan_cad_files,
+)
 from dxf_ingest import Design, extract_designs, load_dxf
 
 logger = logging.getLogger(__name__)
@@ -635,6 +645,57 @@ class DxfLoaderWorker(QThread):
                 self.error_signal.emit(
                     f"Failed to open DWG file '{self.path.name}'.",
                     str(dwg_exc),
+                )
+                return
+
+        if self.path.suffix.lower() == ".pdf":
+            try:
+                import cv2
+                from app.core.pdf_render import get_pdf_page_count, render_pdf_page
+                page_cnt = get_pdf_page_count(self.path)
+                preview_bgr = render_pdf_page(self.path, page_index=0, dpi=200)
+
+                parsed = ParsedDxfData(self.path)
+                parsed.file_size_bytes = self.path.stat().st_size
+                parsed.dxf_version_code = "PDF"
+                parsed.dxf_version_name = f"PDF Document ({page_cnt} page{'s' if page_cnt > 1 else ''})"
+                parsed.units_name = "PDF Pixels (200 DPI)"
+                parsed.units_suffix = "px"
+                h, w = preview_bgr.shape[:2]
+                parsed.drawing_bounds = (0.0, 0.0, float(w), float(h))
+                parsed.raster_image = preview_bgr
+
+                rgb = cv2.cvtColor(preview_bgr, cv2.COLOR_BGR2RGB)
+                qimg = QImage(rgb.data, w, h, w * 3, QImage.Format.Format_RGB888)
+                parsed.raster_pixmap = QPixmap.fromImage(qimg.copy())
+
+                l_info = LayerInfo(
+                    name="PDF_PAGE",
+                    color=QColor(255, 255, 255),
+                    is_on=True,
+                )
+                l_info.entity_count = 1
+                parsed.layers["PDF_PAGE"] = l_info
+                parsed.total_entity_count = 1
+
+                parsed.designs = [
+                    Design(
+                        design_id=f"{self.path.stem}_p1",
+                        design_code=f"{self.path.stem} (Page 1)",
+                        bbox=(0.0, 0.0, float(w), float(h)),
+                        source_path=str(self.path),
+                        entity_count=1,
+                    )
+                ]
+
+                GLOBAL_DXF_CACHE.put(self.path, parsed)
+                self.loaded_signal.emit(parsed)
+                return
+            except Exception as pdf_exc:
+                logger.exception("Error loading PDF preview for %s: %s", self.path.name, pdf_exc)
+                self.error_signal.emit(
+                    f"Failed to open PDF file '{self.path.name}'.",
+                    str(pdf_exc),
                 )
                 return
 
@@ -1876,24 +1937,79 @@ class DxfViewerWindow(QMainWindow):
 
 
 # ---------------------------------------------------------------------------
-# Left Side Panel: Folders & DXF Files Browser (DxfFolderExplorerWidget)
+# Background File Scanner Worker (FolderScanWorker)
+# ---------------------------------------------------------------------------
+
+class FolderScanWorker(QThread):
+    scan_finished = Signal(object, object, object, object)  # (root, matched_paths, labels_map, tree_dict)
+    scan_error = Signal(str)
+
+    def __init__(
+        self,
+        root_folder: Path,
+        allowed_exts: Set[str],
+        recursive: bool = True,
+        parent: Optional[Any] = None,
+    ):
+        super().__init__(parent)
+        self.root_folder = Path(root_folder).resolve()
+        self.allowed_exts = set(allowed_exts)
+        self.recursive = recursive
+        self._is_cancelled = False
+
+    def cancel(self) -> None:
+        self._is_cancelled = True
+
+    def run(self) -> None:
+        try:
+            if not self.allowed_exts:
+                self.scan_finished.emit(self.root_folder, [], {}, {})
+                return
+
+            matched = scan_cad_files(self.root_folder, self.allowed_exts, recursive=self.recursive)
+            if self._is_cancelled:
+                return
+
+            labels = build_unique_display_labels(matched, root=self.root_folder)
+            if self._is_cancelled:
+                return
+
+            tree = build_tree_hierarchy(matched, root=self.root_folder)
+            if self._is_cancelled:
+                return
+
+            self.scan_finished.emit(self.root_folder, matched, labels, tree)
+        except Exception as exc:
+            logger.exception("Error in FolderScanWorker for %s: %s", self.root_folder, exc)
+            self.scan_error.emit(str(exc))
+
+
+# ---------------------------------------------------------------------------
+# Left Side Panel: Folders & CAD Files Browser (DxfFolderExplorerWidget)
 # ---------------------------------------------------------------------------
 
 class DxfFolderExplorerWidget(QWidget):
     """
-    Folder and file list browser on the left side of the DXF Preview workspace.
-    Allows browsing directories, quick-jumping to Project / Catalog root,
-    real-time filename search/filtering, and selecting DXF files for preview.
+    Folder and file list browser on the left side of the CAD Preview workspace.
+    Supports:
+    - File type filtering: [ ] DXF  [ ] DWG  [ ] All
+    - Flat List view with collision-free display labels (e.g. 'a/1.dxf' vs 'b/1.dxf')
+    - Tree View with hierarchical folder navigation (folders with 0 matches hidden)
+    - Natural sorting (1.dxf, 2.dxf, 10.dxf)
+    - Background directory scanning for smooth UI
+    - Real-time search query filtering
     """
 
     file_selected = Signal(Path)
 
+    _session_tree_mode: bool = False
+
     def __init__(self, initial_folder: Optional[Path | str] = None, parent: Optional[QWidget] = None):
         super().__init__(parent)
+        settings = QSettings("DesignMatcher", "DxfViewer")
         if initial_folder is not None and Path(initial_folder).is_dir():
             self.current_folder = Path(initial_folder).resolve()
         else:
-            settings = QSettings("DesignMatcher", "DxfViewer")
             saved_folder = settings.value("last_dxf_folder", "", type=str)
             if saved_folder and Path(saved_folder).is_dir():
                 self.current_folder = Path(saved_folder).resolve()
@@ -1901,7 +2017,23 @@ class DxfFolderExplorerWidget(QWidget):
                 self.current_folder = Path.cwd().resolve()
 
         self._all_dxf_files: List[Path] = []
+        self._labels_map: Dict[Path, str] = {}
+        self._tree_dict: Dict[str, Any] = {}
+        self._scan_worker: Optional[FolderScanWorker] = None
+        self._updating_filters: bool = False
+        self.is_dark_mode: bool = True
+
         self._setup_ui()
+
+        # Restore in-session tree mode preference
+        self.btn_tree_view.setChecked(self._session_tree_mode)
+        if self._session_tree_mode:
+            self.btn_tree_view.setText("📋 List View")
+            self.view_stack.setCurrentIndex(1)
+        else:
+            self.btn_tree_view.setText("🌳 Tree View")
+            self.view_stack.setCurrentIndex(0)
+
         self.refresh()
 
     def _setup_ui(self) -> None:
@@ -1909,12 +2041,24 @@ class DxfFolderExplorerWidget(QWidget):
         layout.setContentsMargins(8, 8, 8, 8)
         layout.setSpacing(6)
 
-        # 1. Header Title & Refresh
+        # 1. Header Title & Top Controls (Tree View Toggle + Refresh)
         title_box = QHBoxLayout()
-        self.title_lbl = QLabel("📁 DXF FOLDERS & FILES", self)
+        title_box.setSpacing(4)
+        self.title_lbl = QLabel("📁 CAD FILES", self)
         self.title_lbl.setStyleSheet("font-size: 11px; font-weight: 700; color: #94A3B8; letter-spacing: 0.5px;")
         title_box.addWidget(self.title_lbl)
         title_box.addStretch()
+
+        self.btn_tree_view = QPushButton("🌳 Tree View", self)
+        self.btn_tree_view.setCheckable(True)
+        self.btn_tree_view.setToolTip("Toggle between Flat List and Hierarchical Tree View")
+        self.btn_tree_view.setStyleSheet(
+            "QPushButton { background: #1E293B; color: #CBD5E1; border: 1px solid #334155; border-radius: 4px; padding: 3px 7px; font-size: 10px; font-weight: 600; } "
+            "QPushButton:hover { background: #334155; } "
+            "QPushButton:checked { background: #2563EB; color: #FFFFFF; border-color: #3B82F6; }"
+        )
+        self.btn_tree_view.toggled.connect(self._on_tree_mode_toggled)
+        title_box.addWidget(self.btn_tree_view)
 
         self.btn_refresh = QToolButton(self)
         self.btn_refresh.setText("🔄")
@@ -1944,30 +2088,51 @@ class DxfFolderExplorerWidget(QWidget):
 
         # 4. Search / Filter Input
         self.search_input = QLineEdit(self)
-        self.search_input.setPlaceholderText("🔍 Filter DXF & DWG files...")
+        self.search_input.setPlaceholderText("🔍 Filter by name or label...")
         self.search_input.setClearButtonEnabled(True)
         self.search_input.setStyleSheet(
             "QLineEdit { background: #0F172A; color: #F8FAFC; border: 1px solid #334155; border-radius: 4px; padding: 4px 8px; font-size: 11px; } "
             "QLineEdit:focus { border-color: #3B82F6; }"
         )
-        self.search_input.textChanged.connect(self._filter_files)
+        self.search_input.textChanged.connect(self._on_search_text_changed)
         layout.addWidget(self.search_input)
 
-        # 5. Options Row: Recursive Subfolders & Count Label
-        opts_row = QHBoxLayout()
-        self.chk_recursive = QCheckBox("Include Subfolders", self)
-        self.chk_recursive.setChecked(True)
-        self.chk_recursive.setStyleSheet("QCheckBox { color: #94A3B8; font-size: 10px; }")
-        self.chk_recursive.toggled.connect(self.refresh)
-        opts_row.addWidget(self.chk_recursive)
+        # 5. File Type Filters Row: [ ] DXF   [ ] DWG   [ ] All  + Count Label
+        filter_box = QHBoxLayout()
+        filter_box.setSpacing(8)
 
-        opts_row.addStretch()
+        self.chk_dxf = QCheckBox("DXF", self)
+        self.chk_dxf.setChecked(True)
+        self.chk_dxf.setToolTip("Show .dxf drawings")
+        self.chk_dxf.setStyleSheet("QCheckBox { color: #CBD5E1; font-size: 11px; font-weight: 600; }")
+        self.chk_dxf.toggled.connect(self._on_type_checkbox_toggled)
+        filter_box.addWidget(self.chk_dxf)
+
+        self.chk_dwg = QCheckBox("DWG", self)
+        self.chk_dwg.setChecked(True)
+        self.chk_dwg.setToolTip("Show .dwg drawings")
+        self.chk_dwg.setStyleSheet("QCheckBox { color: #CBD5E1; font-size: 11px; font-weight: 600; }")
+        self.chk_dwg.toggled.connect(self._on_type_checkbox_toggled)
+        filter_box.addWidget(self.chk_dwg)
+
+        self.chk_all = QCheckBox("All", self)
+        self.chk_all.setChecked(True)
+        self.chk_all.setToolTip("Toggle all CAD drawing types")
+        self.chk_all.setStyleSheet("QCheckBox { color: #94A3B8; font-size: 11px; }")
+        self.chk_all.toggled.connect(self._on_all_checkbox_toggled)
+        filter_box.addWidget(self.chk_all)
+
+        filter_box.addStretch()
+
         self.count_label = QLabel("0 files", self)
         self.count_label.setStyleSheet("color: #64748B; font-size: 10px;")
-        opts_row.addWidget(self.count_label)
-        layout.addLayout(opts_row)
+        filter_box.addWidget(self.count_label)
+        layout.addLayout(filter_box)
 
-        # 6. CAD Files List (DXF & DWG)
+        # 6. View Stack: Page 0 = Flat QListWidget, Page 1 = Hierarchical QTreeWidget
+        self.view_stack = QStackedWidget(self)
+
+        # Flat List Widget
         self.file_list = QListWidget(self)
         self.file_list.setStyleSheet(
             "QListWidget { background: #0F172A; color: #F8FAFC; border: 1px solid #334155; border-radius: 6px; font-size: 11px; } "
@@ -1977,7 +2142,68 @@ class DxfFolderExplorerWidget(QWidget):
         )
         self.file_list.itemClicked.connect(self._on_item_clicked)
         self.file_list.currentItemChanged.connect(self._on_current_item_changed)
-        layout.addWidget(self.file_list, 1)
+        self.view_stack.addWidget(self.file_list)
+
+        # Hierarchical Tree Widget
+        self.file_tree = QTreeWidget(self)
+        self.file_tree.setHeaderHidden(True)
+        self.file_tree.setIndentation(14)
+        self.file_tree.setAnimated(True)
+        self.file_tree.setStyleSheet(
+            "QTreeWidget { background: #0F172A; color: #F8FAFC; border: 1px solid #334155; border-radius: 6px; font-size: 11px; } "
+            "QTreeWidget::item { padding: 4px 6px; border-radius: 3px; } "
+            "QTreeWidget::item:hover { background: #1E293B; } "
+            "QTreeWidget::item:selected { background: #2563EB; color: #FFFFFF; font-weight: 600; }"
+        )
+        self.file_tree.itemClicked.connect(self._on_tree_item_clicked)
+        self.file_tree.itemDoubleClicked.connect(self._on_tree_item_clicked)
+        self.view_stack.addWidget(self.file_tree)
+
+        layout.addWidget(self.view_stack, 1)
+
+        # 7. Status Label (for scanning state / errors)
+        self.status_label = QLabel(self)
+        self.status_label.setStyleSheet("color: #64748B; font-size: 10px; padding: 1px 2px;")
+        self.status_label.setVisible(False)
+        layout.addWidget(self.status_label)
+
+    # Filter Checkbox Synchronisation
+    def _on_all_checkbox_toggled(self, checked: bool) -> None:
+        if self._updating_filters:
+            return
+        self._updating_filters = True
+        try:
+            self.chk_dxf.setChecked(checked)
+            self.chk_dwg.setChecked(checked)
+        finally:
+            self._updating_filters = False
+        self.refresh()
+
+    def _on_type_checkbox_toggled(self) -> None:
+        if self._updating_filters:
+            return
+        self._updating_filters = True
+        try:
+            both = self.chk_dxf.isChecked() and self.chk_dwg.isChecked()
+            self.chk_all.setChecked(both)
+        finally:
+            self._updating_filters = False
+        self.refresh()
+
+    def _get_active_extensions(self) -> Set[str]:
+        exts: Set[str] = set()
+        if self.chk_dxf.isChecked():
+            exts.add(".dxf")
+        if self.chk_dwg.isChecked():
+            exts.add(".dwg")
+        return exts
+
+    # Mode Toggle (Flat List vs Tree View)
+    def _on_tree_mode_toggled(self, checked: bool) -> None:
+        DxfFolderExplorerWidget._session_tree_mode = checked
+        self.btn_tree_view.setText("📋 List View" if checked else "🌳 Tree View")
+        self.view_stack.setCurrentIndex(1 if checked else 0)
+        self._update_views(self.search_input.text())
 
     def _browse_folder_dialog(self) -> None:
         start_dir = str(self.current_folder) if self.current_folder.is_dir() else str(Path.home())
@@ -1989,7 +2215,6 @@ class DxfFolderExplorerWidget(QWidget):
         p = Path(folder).resolve()
         if p.is_dir():
             self.current_folder = p
-            # Persist selected folder across app sessions
             QSettings("DesignMatcher", "DxfViewer").setValue("last_dxf_folder", str(p))
             self.refresh()
 
@@ -1998,39 +2223,85 @@ class DxfFolderExplorerWidget(QWidget):
         self.path_label.setText(f"📂 {p.name}")
         self.path_label.setToolTip(str(p))
 
-        # Scan for DXF and DWG files
-        cad_files: List[Path] = []
+        exts = self._get_active_extensions()
+        if not exts:
+            self._all_dxf_files = []
+            self._labels_map = {}
+            self._tree_dict = {}
+            self.count_label.setText("0 files")
+            self._populate_list_view(hint="No file types selected. Check DXF or DWG above.")
+            self._populate_tree_view(hint="No file types selected. Check DXF or DWG above.")
+            return
+
+        # Cancel previous running scan if any
+        if self._scan_worker is not None and self._scan_worker.isRunning():
+            self._scan_worker.cancel()
+            self._scan_worker.wait(100)
+
+        # Immediate fast scan (instant response on responsive local folders)
         try:
-            cad_exts = ("*.dxf", "*.DXF", "*.dwg", "*.DWG")
-            if self.chk_recursive.isChecked():
-                for ext in cad_exts:
-                    cad_files.extend(list(p.rglob(ext)))
-            else:
-                for ext in cad_exts:
-                    cad_files.extend(list(p.glob(ext)))
+            matched = scan_cad_files(p, exts, recursive=True)
+            labels = build_unique_display_labels(matched, root=p)
+            tree = build_tree_hierarchy(matched, root=p)
+            self._on_scan_completed(p, matched, labels, tree)
         except Exception as exc:
-            logger.warning("Error scanning CAD folder %s: %s", p, exc)
+            logger.warning("Direct scan failed, starting background worker: %s", exc)
+            self.status_label.setText("⏳ Scanning folder...")
+            self.status_label.setVisible(True)
+            self._scan_worker = FolderScanWorker(p, exts, recursive=True, parent=self)
+            self._scan_worker.scan_finished.connect(self._on_scan_completed)
+            self._scan_worker.scan_error.connect(self._on_scan_error)
+            self._scan_worker.start()
 
-        # Deduplicate & sort by name
-        seen = set()
-        unique_files: List[Path] = []
-        for f in cad_files:
-            rp = f.resolve()
-            if rp not in seen and f.is_file():
-                seen.add(rp)
-                unique_files.append(f)
-        unique_files.sort(key=lambda x: x.name.lower())
-        self._all_dxf_files = unique_files
-        self._filter_files(self.search_input.text())
+    def _on_scan_completed(
+        self,
+        root: Path,
+        matched: List[Path],
+        labels: Dict[Path, str],
+        tree: Dict[str, Any],
+    ) -> None:
+        if root.resolve() != self.current_folder.resolve():
+            return
+        self.status_label.setVisible(False)
+        self._all_dxf_files = matched
+        self._labels_map = labels
+        self._tree_dict = tree
+        self._update_views(self.search_input.text())
 
-    def _filter_files(self, query: str = "") -> None:
+    def _on_scan_error(self, err_msg: str) -> None:
+        self.status_label.setText(f"⚠️ Scan error: {err_msg}")
+        self.status_label.setVisible(True)
+
+    def _on_search_text_changed(self, text: str) -> None:
+        self._update_views(text)
+
+    def _update_views(self, query: str = "") -> None:
+        q = query.strip().lower()
+        self._populate_list_view(query=q)
+        self._populate_tree_view(query=q)
+
+    def _populate_list_view(self, query: str = "", hint: Optional[str] = None) -> None:
         self.file_list.blockSignals(True)
         self.file_list.clear()
 
-        q = query.strip().lower()
-        matched = [f for f in self._all_dxf_files if not q or q in f.name.lower()]
+        if hint:
+            hint_item = QListWidgetItem(hint)
+            hint_item.setFlags(Qt.ItemFlag.NoItemFlags)
+            hint_item.setForeground(QBrush(QColor("#64748B")))
+            self.file_list.addItem(hint_item)
+            self.file_list.blockSignals(False)
+            return
 
-        for f in matched:
+        items_to_add: List[Tuple[str, Path]] = []
+        for f in self._all_dxf_files:
+            lbl = self._labels_map.get(f, f.name)
+            if not query or (query in lbl.lower() or query in f.name.lower()):
+                items_to_add.append((lbl, f))
+
+        # Natural sort by display label
+        items_to_add.sort(key=lambda pair: natural_sort_key(pair[0]))
+
+        for lbl, f in items_to_add:
             try:
                 sz = f.stat().st_size
                 sz_str = f"{sz / 1024:.1f} KB" if sz < 1024 * 1024 else f"{sz / (1024 * 1024):.1f} MB"
@@ -2041,20 +2312,108 @@ class DxfFolderExplorerWidget(QWidget):
 
             icon = "📐" if f.suffix.lower() == ".dxf" else "🏗️"
             badge = f.suffix.upper().replace(".", "")
-            item_text = f"{icon} [{badge}] {f.name}\n   {sz_str}  •  {mtime}"
+            item_text = f"{icon} [{badge}] {lbl}\n   {sz_str}  •  {mtime}"
+
             item = QListWidgetItem(item_text)
             item.setData(Qt.ItemDataRole.UserRole, f)
-            item.setToolTip(f"{f.name} ({badge})\nPath: {f}\nSize: {sz_str}")
+            item.setToolTip(f"{lbl} ({badge})\nFull Path: {f.resolve()}\nSize: {sz_str}\nModified: {mtime}")
             self.file_list.addItem(item)
 
-        self.count_label.setText(f"{len(matched)} of {len(self._all_dxf_files)} CAD file(s)")
-        if not matched:
-            empty_item = QListWidgetItem("No DXF or DWG files found in folder.\nClick 'Browse Folder' to select CAD directory.")
+        self.count_label.setText(f"{len(items_to_add)} of {len(self._all_dxf_files)} CAD file(s)")
+
+        if not items_to_add:
+            msg = "No matching CAD files found.\nClick 'Browse Folder' to select another folder." if not self._all_dxf_files else f"No files match filter '{query}'."
+            empty_item = QListWidgetItem(msg)
             empty_item.setFlags(Qt.ItemFlag.NoItemFlags)
             empty_item.setForeground(QBrush(QColor("#64748B")))
             self.file_list.addItem(empty_item)
 
         self.file_list.blockSignals(False)
+
+    def _populate_tree_view(self, query: str = "", hint: Optional[str] = None) -> None:
+        self.file_tree.blockSignals(True)
+        self.file_tree.clear()
+
+        if hint:
+            hint_item = QTreeWidgetItem(self.file_tree)
+            hint_item.setText(0, hint)
+            hint_item.setFlags(Qt.ItemFlag.NoItemFlags)
+            hint_item.setForeground(0, QBrush(QColor("#64748B")))
+            self.file_tree.blockSignals(False)
+            return
+
+        q = query.strip().lower()
+        matching_count = 0
+
+        def _add_tree_node(parent_item_or_tree: Any, node_dict: Dict[str, Any]) -> Optional[QTreeWidgetItem]:
+            nonlocal matching_count
+            if not node_dict.get("is_dir", False):
+                # File leaf item
+                fname = node_dict["name"]
+                p: Path = node_dict["path"]
+                if q and (q not in fname.lower() and q not in str(p).lower()):
+                    return None
+
+                matching_count += 1
+                badge = p.suffix.upper().replace(".", "")
+                icon = "📐" if p.suffix.lower() == ".dxf" else "🏗️"
+                item = QTreeWidgetItem(parent_item_or_tree)
+                item.setText(0, f"{icon} [{badge}] {fname}")
+                item.setData(0, Qt.ItemDataRole.UserRole, p)
+                try:
+                    sz = p.stat().st_size
+                    sz_str = f"{sz / 1024:.1f} KB" if sz < 1024 * 1024 else f"{sz / (1024 * 1024):.1f} MB"
+                except Exception:
+                    sz_str = "0 KB"
+                item.setToolTip(0, f"File: {fname}\nFull Path: {p.resolve()}\nSize: {sz_str}")
+                return item
+            else:
+                # Folder branch item
+                dir_name = node_dict["name"]
+                dir_path: Path = node_dict["path"]
+                branch = QTreeWidgetItem(parent_item_or_tree)
+                branch.setText(0, f"📁 {dir_name}")
+                branch.setToolTip(0, f"Folder: {dir_path.resolve()}")
+
+                children = list(node_dict.get("children", {}).values())
+                # Sort folders first, then files (both naturally sorted)
+                children.sort(key=lambda c: (0 if c.get("is_dir", False) else 1, natural_sort_key(c["name"])))
+
+                added_children = 0
+                for child in children:
+                    res = _add_tree_node(branch, child)
+                    if res is not None:
+                        added_children += 1
+
+                # If folder contains no matching files, omit it
+                if added_children == 0:
+                    if isinstance(parent_item_or_tree, QTreeWidget):
+                        idx = parent_item_or_tree.indexOfTopLevelItem(branch)
+                        parent_item_or_tree.takeTopLevelItem(idx)
+                    else:
+                        parent_item_or_tree.removeChild(branch)
+                    return None
+
+                return branch
+
+        root_children = list(self._tree_dict.get("children", {}).values())
+        root_children.sort(key=lambda c: (0 if c.get("is_dir", False) else 1, natural_sort_key(c["name"])))
+
+        for child in root_children:
+            _add_tree_node(self.file_tree, child)
+
+        # Expand all folders by default in tree mode
+        self.file_tree.expandAll()
+        self.count_label.setText(f"{matching_count} of {len(self._all_dxf_files)} CAD file(s)")
+
+        if self.file_tree.topLevelItemCount() == 0:
+            msg = "No matching CAD files found." if not self._all_dxf_files else f"No files match filter '{query}'."
+            empty_item = QTreeWidgetItem(self.file_tree)
+            empty_item.setText(0, msg)
+            empty_item.setForeground(0, QBrush(QColor("#64748B")))
+            empty_item.setFlags(Qt.ItemFlag.NoItemFlags)
+
+        self.file_tree.blockSignals(False)
 
     def _on_item_clicked(self, item: QListWidgetItem) -> None:
         f = item.data(Qt.ItemDataRole.UserRole)
@@ -2065,18 +2424,56 @@ class DxfFolderExplorerWidget(QWidget):
         if current is not None:
             self._on_item_clicked(current)
 
+    def _on_tree_item_clicked(self, item: QTreeWidgetItem, column: int = 0) -> None:
+        f = item.data(0, Qt.ItemDataRole.UserRole)
+        if isinstance(f, Path) and f.is_file():
+            self.file_selected.emit(f)
+
     def select_file(self, target_path: Path | str) -> None:
         tp = Path(target_path).resolve()
+
+        # 1. Flat List selection
         for idx in range(self.file_list.count()):
             item = self.file_list.item(idx)
             f = item.data(Qt.ItemDataRole.UserRole)
             if isinstance(f, Path) and f.resolve() == tp:
                 self.file_list.blockSignals(True)
                 self.file_list.setCurrentRow(idx)
+                self.file_list.scrollToItem(item)
                 self.file_list.blockSignals(False)
                 break
 
+        # 2. Tree View selection
+        def _find_and_select(parent: Any) -> bool:
+            count = parent.topLevelItemCount() if isinstance(parent, QTreeWidget) else parent.childCount()
+            for i in range(count):
+                item = parent.topLevelItem(i) if isinstance(parent, QTreeWidget) else parent.child(i)
+                f = item.data(0, Qt.ItemDataRole.UserRole)
+                if isinstance(f, Path) and f.resolve() == tp:
+                    self.file_tree.blockSignals(True)
+                    self.file_tree.setCurrentItem(item)
+                    item.setSelected(True)
+                    curr = item.parent()
+                    while curr:
+                        curr.setExpanded(True)
+                        curr = curr.parent()
+                    self.file_tree.scrollToItem(item)
+                    self.file_tree.blockSignals(False)
+                    return True
+                if _find_and_select(item):
+                    return True
+            return False
+
+        _find_and_select(self.file_tree)
+
+    def closeEvent(self, event) -> None:
+        if self._scan_worker is not None and self._scan_worker.isRunning():
+            self._scan_worker.cancel()
+            self._scan_worker.wait(200)
+        super().closeEvent(event)
+
     def apply_theme(self, is_dark: bool) -> None:
+        self.is_dark_mode = is_dark
         bg_main = "#0F172A" if is_dark else "#FFFFFF"
         border_col = "#334155" if is_dark else "#CBD5E1"
         text_primary = "#F8FAFC" if is_dark else "#0F172A"
@@ -2089,14 +2486,21 @@ class DxfFolderExplorerWidget(QWidget):
         self.setStyleSheet(f"background-color: {bg_main};")
         self.title_lbl.setStyleSheet(f"font-size: 11px; font-weight: 700; color: {text_muted}; letter-spacing: 0.5px;")
 
-
+        self.btn_tree_view.setStyleSheet(
+            f"QPushButton {{ background: {btn_bg}; color: {btn_text}; border: 1px solid {border_col}; border-radius: 4px; padding: 3px 7px; font-size: 10px; font-weight: 600; }} "
+            f"QPushButton:hover {{ background: {btn_hover}; }} "
+            f"QPushButton:checked {{ background: #2563EB; color: #FFFFFF; border-color: #3B82F6; }}"
+        )
         self.btn_refresh.setStyleSheet(
             f"QToolButton {{ background: {btn_bg}; color: {btn_text}; border: 1px solid {border_col}; border-radius: 4px; padding: 2px 5px; }} "
             f"QToolButton:hover {{ background: {btn_hover}; }}"
         )
         self.path_label.setStyleSheet(f"color: {text_muted}; font-size: 10px; padding: 2px 0px;")
-        self.chk_recursive.setStyleSheet(f"QCheckBox {{ color: {text_muted}; font-size: 10px; }}")
         self.count_label.setStyleSheet(f"color: {text_muted}; font-size: 10px;")
+
+        self.chk_dxf.setStyleSheet(f"QCheckBox {{ color: {text_primary}; font-size: 11px; font-weight: 600; }}")
+        self.chk_dwg.setStyleSheet(f"QCheckBox {{ color: {text_primary}; font-size: 11px; font-weight: 600; }}")
+        self.chk_all.setStyleSheet(f"QCheckBox {{ color: {text_muted}; font-size: 11px; }}")
 
         self.search_input.setStyleSheet(
             f"QLineEdit {{ background: {bg_main}; color: {text_primary}; border: 1px solid {border_col}; border-radius: 4px; padding: 4px 8px; font-size: 11px; }} "
@@ -2108,6 +2512,13 @@ class DxfFolderExplorerWidget(QWidget):
             f"QListWidget::item:hover {{ background: {item_hover}; }} "
             f"QListWidget::item:selected {{ background: #2563EB; color: #FFFFFF; font-weight: 600; }}"
         )
+        self.file_tree.setStyleSheet(
+            f"QTreeWidget {{ background: {bg_main}; color: {text_primary}; border: 1px solid {border_col}; border-radius: 6px; font-size: 11px; }} "
+            f"QTreeWidget::item {{ padding: 4px 6px; border-radius: 3px; }} "
+            f"QTreeWidget::item:hover {{ background: {item_hover}; }} "
+            f"QTreeWidget::item:selected {{ background: #2563EB; color: #FFFFFF; font-weight: 600; }}"
+        )
+        self.status_label.setStyleSheet(f"color: {text_muted}; font-size: 10px; padding: 1px 2px;")
 
 
 # ---------------------------------------------------------------------------
@@ -2691,6 +3102,19 @@ class DxfPreviewPage(QWidget):
 
         self.toolbar.addSeparator()
 
+        self.btn_find_design = QToolButton(self.toolbar)
+        self.btn_find_design.setText("🎯 Find Design")
+        self.btn_find_design.setCheckable(True)
+        self.btn_find_design.setToolTip("Open 'Find Design' Stencil & Matching Studio")
+        self.btn_find_design.setStyleSheet(
+            "QToolButton { background: #2563EB; color: white; border: 1px solid #3B82F6; font-weight: 700; padding: 4px 10px; border-radius: 4px; } "
+            "QToolButton:hover { background: #1D4ED8; } "
+            "QToolButton:checked { background: #0284C7; border-color: #38BDF8; color: white; }"
+        )
+        self.toolbar.addWidget(self.btn_find_design)
+
+        self.toolbar.addSeparator()
+
         # Open in Application dropdown
         self.btn_open_app = QToolButton(self.toolbar)
         self.btn_open_app.setText("🚀 Open in CAD App")
@@ -2712,18 +3136,55 @@ class DxfPreviewPage(QWidget):
         main_layout.addWidget(self.toolbar)
 
         # 2. Main Body Splitter (4 Columns side-by-side)
-        # Column 1: Folders & DXF Files
+        # Column 1: Left Tabbed Explorer (CAD File Browser & Find Design Studio)
         # Column 2: Detected Designs List
         # Column 3: Vector CAD Preview Canvas
         # Column 4: CAD Layers & Properties Inspector
         self.main_splitter = QSplitter(Qt.Orientation.Horizontal, self)
         self.main_splitter.setHandleWidth(2)
 
-        # Column 1: DXF Folders and Files Browser
-        self.folder_explorer = DxfFolderExplorerWidget(initial_folder=initial_folder, parent=self.main_splitter)
-        self.folder_explorer.setMinimumWidth(200)
-        self.folder_explorer.setMaximumWidth(380)
-        self.main_splitter.addWidget(self.folder_explorer)
+        # Column 1: Left Tabbed Container (Files & Find Design)
+        self.left_tabs = QTabWidget(self.main_splitter)
+        self.left_tabs.setMinimumWidth(220)
+        self.left_tabs.setMaximumWidth(420)
+        self.left_tabs.setStyleSheet(
+            """
+            QTabWidget::pane {
+                border: 1px solid #334155;
+                background: #0F172A;
+            }
+            QTabBar::tab {
+                background: #1E293B;
+                color: #94A3B8;
+                padding: 6px 12px;
+                font-size: 11px;
+                font-weight: 600;
+                border-top-left-radius: 4px;
+                border-top-right-radius: 4px;
+                margin-right: 2px;
+            }
+            QTabBar::tab:selected {
+                background: #0F172A;
+                color: #38BDF8;
+                border-top: 2px solid #38BDF8;
+            }
+            QTabBar::tab:hover:!selected {
+                background: #334155;
+                color: #F8FAFC;
+            }
+            """
+        )
+
+        self.folder_explorer = DxfFolderExplorerWidget(initial_folder=initial_folder, parent=self.left_tabs)
+        self.left_tabs.addTab(self.folder_explorer, "📁 Files")
+
+        from app.gui.find_design_widget import FindDesignWidget
+        self.find_design_widget = FindDesignWidget(parent=self.left_tabs)
+        if self.folder_explorer.current_folder:
+            self.find_design_widget.set_current_cad_folder(self.folder_explorer.current_folder)
+        self.left_tabs.addTab(self.find_design_widget, "🎯 Find Design")
+
+        self.main_splitter.addWidget(self.left_tabs)
 
         # Column 2: Detected Designs Panel
         self.detected_designs = DxfDetectedDesignsWidget(parent=self.main_splitter)
@@ -2814,6 +3275,11 @@ class DxfPreviewPage(QWidget):
         self.act_show_folder.triggered.connect(self._show_in_folder)
         self.act_copy_path.triggered.connect(self._copy_path)
 
+        # Find Design studio integration
+        self.btn_find_design.toggled.connect(self._on_find_design_btn_toggled)
+        self.left_tabs.currentChanged.connect(self._on_left_tabs_changed)
+        self.find_design_widget.match_selected.connect(self._on_find_design_match_selected)
+
         # Folder explorer -> file selection
         self.folder_explorer.file_selected.connect(self.load_file)
 
@@ -2832,6 +3298,38 @@ class DxfPreviewPage(QWidget):
         self.view.design_selected_signal.connect(self._on_design_clicked_in_view)
         self.view.measure_updated_signal.connect(self._on_measure_updated)
 
+    def _on_find_design_btn_toggled(self, checked: bool) -> None:
+        self.left_tabs.setCurrentIndex(1 if checked else 0)
+
+    def _on_left_tabs_changed(self, idx: int) -> None:
+        self.btn_find_design.blockSignals(True)
+        self.btn_find_design.setChecked(idx == 1)
+        self.btn_find_design.blockSignals(False)
+        if idx == 1 and self.folder_explorer.current_folder:
+            self.find_design_widget.set_current_cad_folder(self.folder_explorer.current_folder)
+
+    def _on_find_design_match_selected(
+        self,
+        fpath: Path,
+        page_or_sheet: int,
+        bbox: tuple,
+        rotation_deg: int,
+        is_mirrored: bool,
+    ) -> None:
+        orient_parts = []
+        if rotation_deg != 0:
+            orient_parts.append(f"↻ {rotation_deg}°")
+        if is_mirrored:
+            orient_parts.append("⇋ Mirrored")
+        orient_badge = f" ({', '.join(orient_parts)})" if orient_parts else ""
+
+        match_code = f"Match{orient_badge}"
+        self.load_file(fpath, matched_bbox=bbox, matched_code=match_code)
+        self.status_bar.showMessage(
+            f"🎯 Matched design in '{fpath.name}'{orient_badge} at {tuple(round(v, 1) for v in bbox)}",
+            8000,
+        )
+
     def _set_all_layers(self, visible: bool) -> None:
         self.inspector.set_all_layers_visible(visible)
         if self.scene.parsed_data:
@@ -2848,6 +3346,8 @@ class DxfPreviewPage(QWidget):
         """Loads and visualizes a DXF CAD drawing asynchronously."""
         code = design_code if design_code is not None else matched_code
         path = Path(dxf_path).resolve()
+        if path.is_file() and hasattr(self, "find_design_widget"):
+            self.find_design_widget.set_current_cad_folder(path.parent)
         self.current_dxf_path = path
         self.matched_bbox = matched_bbox
         self.matched_code = code

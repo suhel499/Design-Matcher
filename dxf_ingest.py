@@ -9,34 +9,70 @@ import importlib.util
 import sys
 from pathlib import Path
 
-dm_dir = Path(__file__).resolve().parent / "design_matcher"
-if str(dm_dir) not in sys.path:
-    sys.path.insert(0, str(dm_dir))
+# 1. Resolve candidate directories containing design_matcher/dxf_ingest.py
+_this_file = Path(__file__).resolve()
+_candidates = [
+    _this_file.parent / "design_matcher",
+    _this_file.parent,
+]
 
-_impl_path = dm_dir / "dxf_ingest.py"
-if _impl_path.exists():
-    _spec = importlib.util.spec_from_file_location("design_matcher_dxf_ingest", _impl_path)
-    if _spec and _spec.loader:
-        _mod = importlib.util.module_from_spec(_spec)
-        sys.modules["design_matcher_dxf_ingest"] = _mod
-        _spec.loader.exec_module(_mod)
-else:
-    _mod = sys.modules.get("design_matcher_dxf_ingest") or sys.modules.get("dxf_ingest")
-    if _mod is None:
-        try:
-            import design_matcher_dxf_ingest as _mod
-        except ImportError:
-            import dxf_ingest as _mod
+if getattr(sys, "frozen", False):
+    _meipass = getattr(sys, "_MEIPASS", None)
+    if _meipass:
+        _candidates.insert(0, Path(_meipass) / "design_matcher")
+        _candidates.insert(1, Path(_meipass))
+    _exe_dir = Path(sys.executable).resolve().parent
+    _candidates.append(_exe_dir / "design_matcher")
+    _candidates.append(_exe_dir / "_internal" / "design_matcher")
+    _candidates.append(_exe_dir)
 
-DEFAULT_IGNORE_LAYERS = getattr(_mod, "DEFAULT_IGNORE_LAYERS", None)
-Design = getattr(_mod, "Design", None)
-DxfTextLabel = getattr(_mod, "DxfTextLabel", None)
-convert_line_art_to_stencil_mask = getattr(_mod, "convert_line_art_to_stencil_mask", None)
-extract_designs = getattr(_mod, "extract_designs", None)
-load_dxf = getattr(_mod, "load_dxf", None)
-process_dxf_file = getattr(_mod, "process_dxf_file", None)
-render_design = getattr(_mod, "render_design", None)
-_run_debug_cli = getattr(_mod, "_run_debug_cli", None)
+_impl_path = None
+for c in _candidates:
+    p = c / "dxf_ingest.py"
+    if p.exists() and p.resolve() != _this_file:
+        _impl_path = p
+        if str(c) not in sys.path:
+            sys.path.insert(0, str(c))
+        break
+
+_mod = None
+if _impl_path and _impl_path.exists():
+    try:
+        _spec = importlib.util.spec_from_file_location("design_matcher_dxf_ingest", _impl_path)
+        if _spec and _spec.loader:
+            _mod = importlib.util.module_from_spec(_spec)
+            sys.modules["design_matcher_dxf_ingest"] = _mod
+            _spec.loader.exec_module(_mod)
+    except Exception:
+        _mod = None
+
+if _mod is None:
+    _mod = sys.modules.get("design_matcher_dxf_ingest")
+
+if _mod is None:
+    try:
+        import design_matcher_dxf_ingest as _mod  # type: ignore
+    except Exception:
+        _mod = None
+
+if _mod and _mod is not sys.modules.get(__name__):
+    for _k, _v in _mod.__dict__.items():
+        if not _k.startswith("__"):
+            globals()[_k] = _v
+
+DEFAULT_IGNORE_LAYERS = globals().get("DEFAULT_IGNORE_LAYERS")
+Design = globals().get("Design")
+DxfTextLabel = globals().get("DxfTextLabel")
+convert_line_art_to_stencil_mask = globals().get("convert_line_art_to_stencil_mask")
+extract_designs = globals().get("extract_designs")
+load_dxf = globals().get("load_dxf")
+process_dxf_file = globals().get("process_dxf_file")
+render_design = globals().get("render_design")
+_run_debug_cli = globals().get("_run_debug_cli")
 
 if __name__ == "__main__":
-    _run_debug_cli()
+    if callable(_run_debug_cli):
+        _run_debug_cli()
+    else:
+        sys.stderr.write("Error: dxf_ingest debug CLI could not be loaded.\n")
+        sys.exit(1)

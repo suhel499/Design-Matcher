@@ -26,6 +26,10 @@ python -m pip install --upgrade pip | Out-Null
 python -m pip install -r requirements.txt
 python -m pip install --upgrade pyinstaller pillow | Out-Null
 
+if (-not (Test-Path "models\dinov2-small\config.json")) {
+    Write-Host "[2.5/5] Pre-caching DINOv2 model weights for offline bundling..." -ForegroundColor Green
+    python -c "from transformers import AutoImageProcessor, AutoModel; from pathlib import Path; p = Path('models/dinov2-small'); p.mkdir(parents=True, exist_ok=True); AutoImageProcessor.from_pretrained('facebook/dinov2-small').save_pretrained(p); AutoModel.from_pretrained('facebook/dinov2-small').save_pretrained(p); print('DINOv2 model cached.')"
+}
 
 # 3. Clean PyInstaller Build
 Write-Host "[3/5] Compiling application with PyInstaller..." -ForegroundColor Green

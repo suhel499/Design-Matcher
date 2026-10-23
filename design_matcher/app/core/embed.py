@@ -33,14 +33,7 @@ EMBEDDING_DIM = 384
 
 
 def get_default_model_cache_dir() -> Path:
-    """Returns local path for caching HuggingFace models."""
-    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
-        # Running inside PyInstaller bundle
-        bundle_dir = Path(sys._MEIPASS) / "models" / "dinov2-small"
-        if bundle_dir.exists():
-            return bundle_dir
-
-    # User app data or local directory
+    """Returns local writable path for caching HuggingFace models."""
     if os.name == "nt":
         base = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local"))
     else:
@@ -48,6 +41,28 @@ def get_default_model_cache_dir() -> Path:
     cache_path = base / "design_matcher" / "models"
     cache_path.mkdir(parents=True, exist_ok=True)
     return cache_path
+
+
+def find_bundled_model_dir() -> Optional[Path]:
+    """Locates pre-packaged DINOv2 model directory in PyInstaller bundles or project."""
+    candidates = []
+    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+        meipass = Path(sys._MEIPASS)
+        candidates.append(meipass / "models" / "dinov2-small")
+        candidates.append(meipass / "dinov2-small")
+    if getattr(sys, "frozen", False):
+        exe_parent = Path(sys.executable).resolve().parent
+        candidates.append(exe_parent / "models" / "dinov2-small")
+        candidates.append(exe_parent / "_internal" / "models" / "dinov2-small")
+
+    # Local repo candidate
+    repo_models = Path(__file__).resolve().parent.parent.parent.parent / "models" / "dinov2-small"
+    candidates.append(repo_models)
+
+    for c in candidates:
+        if c.is_dir() and (c / "config.json").exists():
+            return c
+    return None
 
 
 class DINOv2Embedder:
@@ -93,12 +108,31 @@ class DINOv2Embedder:
                     "Or rebuild the application with package_windows.bat."
                 ) from exc
 
-        logger.info("Loading DINOv2 model from '%s' (cache: %s)...", self.model_name_or_path, self.cache_dir)
+        # 1. Check for bundled offline model weights first
+        bundled_dir = find_bundled_model_dir()
+        if bundled_dir:
+            logger.info("Loading bundled offline DINOv2 model from: %s", bundled_dir)
+            try:
+                self._processor = AutoImageProcessor.from_pretrained(
+                    str(bundled_dir),
+                    local_files_only=True,
+                )
+                self._model = AutoModel.from_pretrained(
+                    str(bundled_dir),
+                    local_files_only=True,
+                )
+                self._model.to(self.device)
+                self._model.eval()
+                logger.info("Bundled DINOv2 model successfully initialized.")
+                return
+            except Exception as exc_bundled:
+                logger.warning("Failed loading bundled model from %s (%s). Falling back...", bundled_dir, exc_bundled)
 
-        # Check if model exists in local cache directory
+        # 2. Check local user cache directory
         local_dir = self.cache_dir / "dinov2-small"
-        target_path = str(local_dir) if local_dir.is_dir() else self.model_name_or_path
+        target_path = str(local_dir) if (local_dir.is_dir() and (local_dir / "config.json").exists()) else self.model_name_or_path
 
+        logger.info("Loading DINOv2 model from '%s' (cache: %s)...", target_path, self.cache_dir)
         try:
             self._processor = AutoImageProcessor.from_pretrained(
                 target_path,
