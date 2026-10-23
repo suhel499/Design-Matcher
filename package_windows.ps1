@@ -68,7 +68,7 @@ if (-not $SkipInstaller) {
 
     if ($Iscc) {
         & $Iscc installer.iss
-        $OutputFile = "Output\DesignMatcher_Setup_v1.0.0.exe"
+        $OutputFile = "Output\DesignMatcher_Setup_v1.0.1.exe"
         if (Test-Path $OutputFile) {
             if ($CertThumbprint -ne "" -and $SignTool) {
                 Write-Host "  Signing final installer..." -ForegroundColor Green

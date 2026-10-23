@@ -2,7 +2,7 @@
 ; Generates a professional setup wizard with file associations and desktop shortcuts.
 
 #define MyAppName "Design Matcher"
-#define MyAppVersion "1.0.0"
+#define MyAppVersion "1.0.1"
 #define MyAppPublisher "Design Matcher Software"
 #define MyAppURL "https://github.com/suhel499/Design-Matcher"
 #define MyAppExeName "DesignMatcher.exe"

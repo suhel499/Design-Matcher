@@ -11,7 +11,7 @@ cd "$SCRIPT_DIR"
 
 APP_NAME="DesignMatcher"
 APP_TITLE="Design Matcher"
-VERSION="1.0.0"
+VERSION="1.0.1"
 BUNDLE_ID="com.designmatcher.app"
 
 echo "=========================================================="
