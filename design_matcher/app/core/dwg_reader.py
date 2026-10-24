@@ -190,83 +190,31 @@ def convert_dwg_to_dxf(file_path: Union[str, Path]) -> Optional[Path]:
     """
     Converts a DWG CAD drawing into a standardized ASCII DXF file.
     Enables native vector CAD rendering, layer visibility, and multi-panel design extraction.
+    Delegates to the pluggable dwg_converter (ODA -> LibreDWG -> LibreOffice fallback).
     Caches converted DXF persistently in ~/.design_matcher/dwg_cache/.
 
     Returns:
         Path to converted .dxf file if successful, or None if conversion failed/tools missing.
     """
+    from app.core.dwg_converter import convert_dwg_to_dxf_single
+
+    # Try standard converter (ODA -> LibreDWG)
+    converted = convert_dwg_to_dxf_single(file_path)
+    if converted is not None and converted.is_file():
+        return converted
+
+    # Fallback to headless LibreOffice if available
     p = Path(file_path).resolve()
     if not p.is_file():
         return None
 
-    stat = p.stat()
-    cache_key = hashlib.md5(f"dxf:{p}:{stat.st_size}:{stat.st_mtime}".encode("utf-8")).hexdigest()
     cache_dir = get_dwg_cache_dir()
+    cache_key = hashlib.md5(f"dxf:{p}:{p.stat().st_size}:{p.stat().st_mtime}".encode("utf-8")).hexdigest()
     cached_dxf = cache_dir / f"{cache_key}.dxf"
-
-    # Return cached DXF if already converted
     if cached_dxf.is_file() and cached_dxf.stat().st_size > 100:
         return cached_dxf
 
-    # Method 1: dwg2dxf from libredwg (fast, native CAD conversion preserving splines and blocks)
-    dwg2dxf_bin = find_dwg2dxf_binary()
-    if dwg2dxf_bin:
-        temp_dxf = cache_dir / f"tmp_{cache_key}.dxf"
-        if temp_dxf.exists():
-            temp_dxf.unlink(missing_ok=True)
-        try:
-            # Pass --as r2018 to keep splines, 2D/3D polylines, and blocks intact
-            cmd = [dwg2dxf_bin, "-y", "--as", "r2018", "-o", str(temp_dxf), str(p)]
-            res = subprocess.run(cmd, capture_output=True, text=True, timeout=25)
-            if res.returncode != 0 or not temp_dxf.is_file() or temp_dxf.stat().st_size <= 100:
-                # Retry with basic -y flag
-                cmd_alt = [dwg2dxf_bin, "-y", "-o", str(temp_dxf), str(p)]
-                res = subprocess.run(cmd_alt, capture_output=True, text=True, timeout=25)
-                if res.returncode != 0 or not temp_dxf.is_file() or temp_dxf.stat().st_size <= 100:
-                    cmd_alt2 = [dwg2dxf_bin, "-o", str(temp_dxf), str(p)]
-                    subprocess.run(cmd_alt2, capture_output=True, text=True, timeout=25)
-
-            if temp_dxf.is_file() and temp_dxf.stat().st_size > 100:
-                temp_dxf.replace(cached_dxf)
-                logger.info("Successfully converted %s to DXF via dwg2dxf: %s", p.name, cached_dxf)
-                return cached_dxf
-        except Exception as exc:
-            logger.debug("dwg2dxf conversion failed for %s: %s", p.name, exc)
-        finally:
-            if temp_dxf.exists():
-                temp_dxf.unlink(missing_ok=True)
-
-    # Method 2: ODAFileConverter
-    oda_bin = find_oda_converter_binary()
-    if oda_bin:
-        temp_in = cache_dir / f"oda_in_{cache_key}"
-        temp_out = cache_dir / f"oda_out_{cache_key}"
-        temp_in.mkdir(parents=True, exist_ok=True)
-        temp_out.mkdir(parents=True, exist_ok=True)
-        try:
-            shutil.copy2(p, temp_in / p.name)
-            cmd = [
-                oda_bin,
-                str(temp_in),
-                str(temp_out),
-                "ACAD2018",
-                "DXF",
-                "0",  # recurse: no
-                "1",  # audit: yes
-            ]
-            res = subprocess.run(cmd, capture_output=True, text=True, timeout=25)
-            out_dxfs = list(temp_out.glob("*.dxf"))
-            if out_dxfs and out_dxfs[0].stat().st_size > 100:
-                shutil.copy2(out_dxfs[0], cached_dxf)
-                logger.info("Successfully converted %s to DXF via ODA: %s", p.name, cached_dxf)
-                return cached_dxf
-        except Exception as exc:
-            logger.debug("ODA conversion failed for %s: %s", p.name, exc)
-        finally:
-            shutil.rmtree(temp_in, ignore_errors=True)
-            shutil.rmtree(temp_out, ignore_errors=True)
-
-    # Method 3: LibreOffice headless export to DXF
+    # Method 2: LibreOffice headless export to DXF fallback
     lo_bin = shutil.which("libreoffice") or shutil.which("soffice")
     if not lo_bin and Path("/usr/local/bin/libreoffice").is_file():
         lo_bin = "/usr/local/bin/libreoffice"

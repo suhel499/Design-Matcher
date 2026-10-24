@@ -54,7 +54,7 @@ if exist "!ISCC_PATH!" (
         exit /b 1
     )
     echo ==============================================================================
-    echo [SUCCESS] Windows Installer created at: Output\DesignMatcher_Setup_v1.0.1.exe
+    echo [SUCCESS] Windows Installer created at: Output\DesignMatcher_Setup_v1.0.2.exe
     echo ==============================================================================
 ) else (
     echo [WARNING] Inno Setup 6 compiler (ISCC.exe) was not found at standard paths.

@@ -840,7 +840,19 @@ class FindDesignWidget(QWidget):
         self._clear_results()
 
         # Step 1: Run background indexing worker to ensure all files are indexed in SQLite
-        self._index_worker = TargetIndexWorker(target_files, cache=self.cache, parent=self)
+        custom_oda = None
+        try:
+            from app.core.db import CatalogDatabase
+            custom_oda = CatalogDatabase().get_setting("oda_converter_path")
+        except Exception:
+            pass
+
+        self._index_worker = TargetIndexWorker(
+            target_files,
+            cache=self.cache,
+            custom_oda_path=custom_oda,
+            parent=self,
+        )
         self._index_worker.progress_signal.connect(self._on_index_progress)
         self._index_worker.status_signal.connect(self.status_lbl.setText)
         self._index_worker.finished_signal.connect(lambda f_cnt, c_cnt: self._on_indexing_finished(target_files))

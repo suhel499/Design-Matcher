@@ -339,88 +339,151 @@ class DesignFinderCache:
         )
 
 
-def extract_candidates_from_dxf(file_path: Path) -> List[TargetCandidate]:
+def extract_candidates_from_dxf(
+    file_path: Path,
+    original_file: Optional[Path] = None,
+) -> List[TargetCandidate]:
     """
     Extracts individual candidate designs from a DXF file.
-    Splits multi-design sheets into clusters or panels, and captures INSERT blocks.
+    Splits multi-design sheets into clusters or panels, captures INSERT blocks,
+    and extracts referenced raster IMAGE entities and embedded OLE objects.
     """
     candidates: List[TargetCandidate] = []
-    fname = file_path.name
+    effective_file = original_file or file_path
+    fname = effective_file.name
+    fpath_str = str(effective_file.resolve())
+    effective_ext = effective_file.suffix.lower().lstrip(".")
 
     try:
         parsed = parse_dxf_drawing(file_path)
     except Exception as exc:
-        logger.warning("Failed parsing DXF '%s': %s", fname, exc)
-        return []
+        logger.warning("Failed parsing DXF '%s': %s", file_path.name, exc)
+        parsed = None
 
-    # If the parser identified distinct components or panels, use them
-    components = parsed.components if parsed.components else []
+    if parsed:
+        components = parsed.components if parsed.components else []
 
-    # Fallback to single drawing if no components detected
-    if not components:
-        # Whole drawing as one component
-        all_polys: List[np.ndarray] = []
-        all_closed: List[bool] = []
-        for ep in parsed.entities:
-            if len(ep.points) >= 2:
-                all_polys.append(ep.points.astype(np.float32))
-                all_closed.append(ep.is_closed)
-        if all_polys:
-            cand = _build_candidate_from_polylines(
-                file_path=file_path,
-                filename=fname,
-                file_type="dxf",
-                page_or_sheet=0,
-                candidate_index=0,
-                label=fname,
-                polylines=all_polys,
-                closed_flags=all_closed,
-            )
-            if cand:
-                candidates.append(cand)
-        return candidates
+        if not components:
+            all_polys: List[np.ndarray] = []
+            all_closed: List[bool] = []
+            for ep in parsed.entities:
+                if len(ep.points) >= 2:
+                    all_polys.append(ep.points.astype(np.float32))
+                    all_closed.append(ep.is_closed)
+            if all_polys:
+                cand = _build_candidate_from_polylines(
+                    file_path=effective_file,
+                    filename=fname,
+                    file_type=effective_ext,
+                    page_or_sheet=0,
+                    candidate_index=0,
+                    label=fname,
+                    polylines=all_polys,
+                    closed_flags=all_closed,
+                )
+                if cand:
+                    candidates.append(cand)
+        else:
+            for idx, comp in enumerate(components):
+                comp_polys = [ep.points.astype(np.float32) for ep in comp.polylines if len(ep.points) >= 2]
+                comp_closed = [ep.is_closed for ep in comp.polylines if len(ep.points) >= 2]
+                if not comp_polys:
+                    continue
 
-    for idx, comp in enumerate(components):
-        comp_polys = [ep.points.astype(np.float32) for ep in comp.polylines if len(ep.points) >= 2]
-        comp_closed = [ep.is_closed for ep in comp.polylines if len(ep.points) >= 2]
-        if not comp_polys:
-            continue
+                cand = _build_candidate_from_polylines(
+                    file_path=effective_file,
+                    filename=fname,
+                    file_type=effective_ext,
+                    page_or_sheet=0,
+                    candidate_index=idx,
+                    label=comp.name or f"Design {idx + 1}",
+                    polylines=comp_polys,
+                    closed_flags=comp_closed,
+                    override_bbox=comp.bbox,
+                )
+                if cand:
+                    candidates.append(cand)
 
-        cand = _build_candidate_from_polylines(
-            file_path=file_path,
-            filename=fname,
-            file_type="dxf",
-            page_or_sheet=0,
-            candidate_index=idx,
-            label=comp.name or f"Design {idx + 1}",
-            polylines=comp_polys,
-            closed_flags=comp_closed,
-            override_bbox=comp.bbox,
+    # 2. Extract referenced raster IMAGE entities & embedded OLE objects
+    try:
+        from app.core.cad_image_finder import (
+            build_candidate_from_extracted_image,
+            extract_images_from_dxf,
         )
-        if cand:
-            candidates.append(cand)
+        extracted_imgs = extract_images_from_dxf(file_path, original_file_path=effective_file)
+        for img_idx, ext_img in enumerate(extracted_imgs, start=len(candidates)):
+            cand_img = build_candidate_from_extracted_image(ext_img, candidate_index=img_idx)
+            if cand_img:
+                cand_img.file_path = fpath_str
+                cand_img.filename = fname
+                cand_img.file_type = effective_ext
+                cand_img.id = f"{fpath_str}:img:{img_idx}"
+                candidates.append(cand_img)
+    except Exception as img_exc:
+        logger.debug("Image extraction encountered non-fatal error on %s: %s", fname, img_exc)
 
     return candidates
 
 
-def extract_candidates_from_dwg(file_path: Path) -> List[TargetCandidate]:
+def extract_candidates_from_dwg(
+    file_path: Path,
+    custom_oda_path: Optional[str] = None,
+) -> List[TargetCandidate]:
     """
-    Converts DWG to DXF (with local caching), then extracts vector candidates.
+    Converts DWG to DXF (with local caching), then extracts vector designs,
+    referenced raster images, and embedded OLE objects.
+    Includes the DWG header preview thumbnail as a fallback.
     """
-    converted_dxf = convert_dwg_to_dxf(file_path)
-    if converted_dxf is None or not converted_dxf.is_file():
-        logger.warning("Could not convert DWG file '%s' to DXF", file_path.name)
-        return []
+    from app.core.dwg_converter import convert_dwg_to_dxf_single
+    from app.core.dwg_reader import extract_dwg_embedded_thumbnail
+    from app.core.cad_image_finder import CadExtractedImage, build_candidate_from_extracted_image
 
-    candidates = extract_candidates_from_dxf(converted_dxf)
-    # Update candidate file_path, filename, and file_type to original DWG
+    candidates: List[TargetCandidate] = []
     fname = file_path.name
     fpath_str = str(file_path.resolve())
+
+    # 1. Attempt conversion to DXF
+    converted_dxf = convert_dwg_to_dxf_single(file_path, custom_oda_path=custom_oda_path)
+    if converted_dxf is not None and converted_dxf.is_file():
+        candidates = extract_candidates_from_dxf(converted_dxf, original_file=file_path)
+    else:
+        logger.warning(
+            "DWG conversion not available or failed for '%s'. Install ODA File Converter to enable DWG image search.",
+            fname,
+        )
+
+    # 2. Extract DWG header preview thumbnail (fallback or supplemental preview)
+    header_thumb = extract_dwg_embedded_thumbnail(file_path)
+    if header_thumb is not None and header_thumb.size > 0:
+        # If no candidates extracted via conversion, add header preview as candidate
+        if not candidates:
+            h, w = header_thumb.shape[:2]
+            preview_img = CadExtractedImage(
+                source_file=fpath_str,
+                source_type="dwg_header_preview",
+                label=f"DWG Preview ({fname})",
+                referenced_path=None,
+                resolved_path=None,
+                is_missing=False,
+                image_bgr=header_thumb,
+                bbox=(0.0, 0.0, float(w), float(h)),
+                width_px=w,
+                height_px=h,
+                status_message="AutoCAD header preview thumbnail",
+            )
+            cand_thumb = build_candidate_from_extracted_image(preview_img, candidate_index=0)
+            if cand_thumb:
+                cand_thumb.file_path = fpath_str
+                cand_thumb.filename = fname
+                cand_thumb.file_type = "dwg"
+                cand_thumb.id = f"{fpath_str}:thumb:0"
+                candidates.append(cand_thumb)
+
+    # Ensure all candidates have DWG original path and type
     for cand in candidates:
         cand.file_path = fpath_str
         cand.filename = fname
         cand.file_type = "dwg"
-        cand.id = f"{fpath_str}:{cand.page_or_sheet}:{cand.candidate_index}"
 
     return candidates
 
@@ -586,13 +649,16 @@ def _build_candidate_from_polylines(
     )
 
 
-def extract_file_candidates(file_path: Path) -> List[TargetCandidate]:
+def extract_file_candidates(
+    file_path: Path,
+    custom_oda_path: Optional[str] = None,
+) -> List[TargetCandidate]:
     """Routes file to appropriate extractor based on extension."""
     ext = file_path.suffix.lower()
     if ext == ".dxf":
         return extract_candidates_from_dxf(file_path)
     elif ext == ".dwg":
-        return extract_candidates_from_dwg(file_path)
+        return extract_candidates_from_dwg(file_path, custom_oda_path=custom_oda_path)
     elif ext == ".pdf":
         return extract_candidates_from_pdf(file_path)
     return []
@@ -615,10 +681,17 @@ class TargetIndexWorker(QThread):
     finished_signal = Signal(int, int)  # total_files, total_candidates
     error_signal = Signal(str, str)  # file_path, message
 
-    def __init__(self, target_files: List[Path], cache: Optional[DesignFinderCache] = None, parent: Optional[QObject] = None):
+    def __init__(
+        self,
+        target_files: List[Path],
+        cache: Optional[DesignFinderCache] = None,
+        custom_oda_path: Optional[str] = None,
+        parent: Optional[QObject] = None,
+    ):
         super().__init__(parent)
         self.target_files = target_files
         self.cache = cache or DesignFinderCache()
+        self.custom_oda_path = custom_oda_path
         self._is_cancelled = False
 
     def cancel(self) -> None:
@@ -630,6 +703,21 @@ class TargetIndexWorker(QThread):
         total_cands = 0
 
         self.status_signal.emit(f"Starting index of {total_files} files...")
+
+        # Batch-convert any uncached DWGs first using ODA (converts whole folder at once)
+        uncached_dwgs = [
+            p for p in self.target_files
+            if p.suffix.lower() == ".dwg" and not self.cache.is_file_up_to_date(p)
+        ]
+        if uncached_dwgs and not self._is_cancelled:
+            from app.core.dwg_converter import batch_convert_dwg_to_dxf, get_available_converter
+            conv_bin, conv_type = get_available_converter(self.custom_oda_path)
+            if conv_type == "none":
+                logger.warning("Install ODA File Converter to enable DWG image search.")
+                self.status_signal.emit("Notice: Install ODA File Converter to enable DWG image search.")
+            else:
+                self.status_signal.emit(f"Converting {len(uncached_dwgs)} DWG files via {conv_type.upper()}...")
+                batch_convert_dwg_to_dxf(uncached_dwgs, custom_oda_path=self.custom_oda_path)
 
         for idx, file_path in enumerate(self.target_files):
             if self._is_cancelled:
@@ -648,7 +736,7 @@ class TargetIndexWorker(QThread):
                     continue
 
                 # 2. Extract candidates
-                cands = extract_file_candidates(file_path)
+                cands = extract_file_candidates(file_path, custom_oda_path=self.custom_oda_path)
                 # 3. Store in cache
                 self.cache.store_file_candidates(file_path, cands)
                 total_cands += len(cands)

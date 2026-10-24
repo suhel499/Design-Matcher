@@ -25,3 +25,7 @@ Thumbs.db
 *.db-wal
 *.log
 dxf_ingest.log
+
+# Benchmark and local caches
+benchmark_data_1000/
+.design_matcher/

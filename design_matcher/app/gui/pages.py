@@ -1354,6 +1354,24 @@ class SettingsPage(QWidget):
         self.lbl_db_info.setStyleSheet("font-size: 11px; color: #10B981; font-weight: 600;")
         pref_layout.addWidget(self.lbl_db_info, 3, 1)
 
+        pref_layout.addWidget(QLabel("DWG / ODA Converter:"), 4, 0)
+        oda_vbox = QVBoxLayout()
+        oda_vbox.setSpacing(4)
+        oda_path_row = QHBoxLayout()
+        self.input_oda_path = QLineEdit()
+        self.input_oda_path.setPlaceholderText("Auto-detect (or browse ODAFileConverter path)")
+        self.input_oda_path.textChanged.connect(self._update_oda_status_label)
+        oda_path_row.addWidget(self.input_oda_path, 1)
+        btn_browse_oda = QPushButton("📂 Browse...")
+        btn_browse_oda.setProperty("class", "secondaryBtn")
+        btn_browse_oda.clicked.connect(self._browse_oda_path)
+        oda_path_row.addWidget(btn_browse_oda)
+        oda_vbox.addLayout(oda_path_row)
+        self.lbl_oda_detected = QLabel("")
+        self.lbl_oda_detected.setStyleSheet("font-size: 10px; color: #38BDF8;")
+        oda_vbox.addWidget(self.lbl_oda_detected)
+        pref_layout.addLayout(oda_vbox, 4, 1)
+
         grid.addWidget(pref_box, 1, 1)
 
         container_layout.addLayout(grid)
@@ -1540,6 +1558,40 @@ class SettingsPage(QWidget):
             total_vecs = getattr(self.catalog_index, "total_vectors", 0)
             self.lbl_db_info.setText(f"Indexed Vectors: {total_vecs} | Database: Connected")
 
+        oda_path = self.db.get_setting("oda_converter_path", "")
+        self.input_oda_path.setText(oda_path)
+        self._update_oda_status_label()
+
+    def _browse_oda_path(self) -> None:
+        """Opens file dialog for user to select ODA File Converter executable."""
+        chosen, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select ODA File Converter Executable",
+            "",
+            "Executable Files (*.exe ODAFileConverter*);;All Files (*)",
+        )
+        if chosen and os.path.isfile(chosen):
+            self.input_oda_path.setText(chosen)
+            self._update_oda_status_label()
+
+    def _update_oda_status_label(self) -> None:
+        """Checks and reports whether ODA or LibreDWG is detected on system."""
+        try:
+            from app.core.dwg_converter import get_available_converter
+            custom = self.input_oda_path.text().strip() or None
+            conv_bin, conv_type = get_available_converter(custom)
+            if conv_type == "oda":
+                self.lbl_oda_detected.setText(f"✓ ODA Converter Active: {conv_bin}")
+                self.lbl_oda_detected.setStyleSheet("font-size: 10px; color: #10B981;")
+            elif conv_type == "libredwg":
+                self.lbl_oda_detected.setText(f"✓ LibreDWG dwg2dxf Active (Fallback): {conv_bin}")
+                self.lbl_oda_detected.setStyleSheet("font-size: 10px; color: #38BDF8;")
+            else:
+                self.lbl_oda_detected.setText("⚠️ Not Found. Install ODA File Converter to enable DWG image search.")
+                self.lbl_oda_detected.setStyleSheet("font-size: 10px; color: #F59E0B;")
+        except Exception:
+            pass
+
     def _save_values(self, show_alert: bool = True) -> None:
         if not self.db:
             return
@@ -1572,6 +1624,7 @@ class SettingsPage(QWidget):
         self.db.set_setting("allow_mirrored", "1" if self.chk_mirrored.isChecked() else "0")
         self.db.set_setting("allow_polarity", "1" if self.chk_polarity.isChecked() else "0")
         self.db.set_setting("language", self.combo_lang.currentText())
+        self.db.set_setting("oda_converter_path", self.input_oda_path.text().strip())
 
         theme_str = "light" if self.combo_theme.currentIndex() == 1 else "dark"
         self.db.set_setting("interface_theme", theme_str)
